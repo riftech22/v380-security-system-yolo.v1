@@ -1,0 +1,51 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100" width="100" height="100">
+  <defs>
+    <linearGradient id="alarm-gradient" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#ff0000"/>
+      <stop offset="100%" style="stop-color:#ff4444"/>
+    </linearGradient>
+    <filter id="alarm-glow">
+      <feGaussianBlur stdDeviation="3" result="coloredBlur"/>
+      <feMerge>
+        <feMergeNode in="coloredBlur" in2="SourceGraphic"/>
+      </feMerge>
+    </filter>
+  </defs>
+  
+  <- Systemd Bell -->
+  <ellipse cx="50" cy="45" rx="30" ry="25" 
+           fill="url(#alarm-gradient)" 
+           stroke="#ff0000" 
+           stroke-width="2"
+           filter="url(#alarm-glow)">
+    <animate attributeName="rx" values="30;32;30" dur="0.2s" repeatCount="indefinite"/>
+  </ellipse>
+  
+  <- Systemd Bell top -->
+  <path d="M30 35 Q50 15 70 35" 
+        fill="none" 
+        stroke="#ff0000" 
+        stroke-width="2"
+        filter="url(#alarm-glow)"/>
+  
+  <- Systemd Clapper -->
+  <rect x="42" y="68" width="16" height="8" 
+        fill="url(#alarm-gradient)" 
+        stroke="#ff0000" 
+        stroke-width="2"
+        filter="url(#alarm-glow)">
+    <animate attributeName="x" values="42;40;42" dur="0.3s" repeatCount="indefinite"/>
+  </rect>
+  
+  <- Systemd Sound waves -->
+  <g opacity="0.8">
+    <circle cx="50" cy="25" r="8" fill="none" stroke="#ff0000" stroke-width="1.5">
+      <animate attributeName="r" values="8;12;16" dur="1s" repeatCount="indefinite"/>
+      <animate attributeName="opacity" values="0.8;0.5;0.2;0" dur="1s" repeatCount="indefinite"/>
+    </circle>
+    <circle cx="50" cy="25" r="8" fill="none" stroke="#ff0000" stroke-width="1.5">
+      <animate attributeName="r" values="8;12;16" dur="1s" begin="0.3s" repeatCount="indefinite"/>
+      <animate attributeName="opacity" values="0.8;0.5;0.2;0" dur="1s" begin="0.3s" repeatCount="indefinite"/>
+    </circle>
+  </g>
+</svg>

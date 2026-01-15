@@ -1,0 +1,1284 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>RIFTECH SECURITY SYSTEM</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: 'Courier New', monospace;
+            background: #0a0a0a;
+            color: #00ff00;
+            min-height: 100vh;
+            overflow-x: hidden;
+            position: relative;
+        }
+
+        /* Scanlines effect */
+        body::before {
+            content: "";
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            pointer-events: none;
+            background: repeating-linear-gradient(
+                0deg,
+                rgba(0, 0, 0, 0.1),
+                rgba(0, 0, 0, 0.1) 1px,
+                transparent 1px,
+                transparent 2px
+            );
+            z-index: 1000;
+        }
+
+        /* CRT flicker */
+        @keyframes flicker {
+            0%, 19%, 21%, 23%, 25%, 54%, 56%, 100% {
+                opacity: 1;
+            }
+            20%, 24%, 55% {
+                opacity: 0.9;
+            }
+        }
+
+        body::after {
+            content: "";
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            pointer-events: none;
+            background: rgba(0, 0, 0, 0.02);
+            animation: flicker 0.15s infinite;
+            z-index: 999;
+        }
+        
+        .container {
+            max-width: 1800px;
+            margin: 0 auto;
+            padding: 20px;
+            display: grid;
+            grid-template-columns: 1fr 400px;
+            gap: 20px;
+        }
+        
+        @media (max-width: 1400px) {
+            .container {
+                grid-template-columns: 1fr;
+            }
+        }
+        
+        /* Header */
+        header {
+            grid-column: 1 / -1;
+            text-align: center;
+            padding: 30px;
+            background: rgba(0, 255, 0, 0.03);
+            border-radius: 0;
+            margin-bottom: 20px;
+            border: 2px solid #00ff00;
+            box-shadow: 0 0 30px rgba(0, 255, 0, 0.3), inset 0 0 30px rgba(0, 255, 0, 0.05);
+            position: relative;
+            overflow: hidden;
+        }
+
+        header::before {
+            content: "";
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            height: 2px;
+            background: linear-gradient(90deg, transparent, #00ff00, #00ffff, #ff00ff, #00ff00, transparent);
+            animation: scanline 2s linear infinite;
+        }
+
+        @keyframes scanline {
+            0% { transform: translateX(-100%); }
+            100% { transform: translateX(100%); }
+        }
+
+        h1 {
+            font-size: 3em;
+            margin-bottom: 10px;
+            text-shadow: 
+                0 0 10px #00ff00,
+                0 0 20px #00ff00,
+                0 0 30px #00ff00,
+                0 0 40px #00ffff;
+            letter-spacing: 5px;
+            color: #00ff00;
+            animation: glow 2s ease-in-out infinite alternate;
+        }
+
+        @keyframes glow {
+            from {
+                text-shadow: 
+                    0 0 10px #00ff00,
+                    0 0 20px #00ff00,
+                    0 0 30px #00ff00,
+                    0 0 40px #00ffff;
+            }
+            to {
+                text-shadow: 
+                    0 0 20px #00ffff,
+                    0 0 30px #00ffff,
+                    0 0 40px #00ffff,
+                    0 0 50px #ff00ff;
+            }
+        }
+
+        .subtitle {
+            color: #00ffff;
+            font-size: 1.1em;
+            text-transform: uppercase;
+            letter-spacing: 3px;
+            text-shadow: 0 0 10px #00ffff;
+        }
+        
+        /* Status Bar */
+        .status-bar {
+            display: flex;
+            justify-content: center;
+            gap: 15px;
+            flex-wrap: wrap;
+            margin-top: 20px;
+        }
+        
+        .status-item {
+            background: rgba(0, 0, 0, 0.8);
+            padding: 12px 20px;
+            border-radius: 0;
+            border: 1px solid #00ff00;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            min-width: 120px;
+            justify-content: center;
+            box-shadow: 0 0 10px rgba(0, 255, 0, 0.3);
+        }
+
+        .status-item:hover {
+            box-shadow: 0 0 20px rgba(0, 255, 0, 0.5);
+            border-color: #00ffff;
+        }
+        
+        .status-icon {
+            font-size: 1.3em;
+        }
+        
+        .status-label {
+            font-size: 0.9em;
+            color: #00ffff;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+        }
+        
+        .status-value {
+            color: #00ff00;
+            font-weight: bold;
+            font-size: 1.2em;
+            text-shadow: 0 0 10px #00ff00;
+        }
+        
+        .status-value.warning {
+            color: #ffff00;
+        }
+        
+        .status-value.danger {
+            color: #ff0000;
+        }
+        
+        /* Video Container */
+        .video-section {
+            background: rgba(0, 0, 0, 0.9);
+            border-radius: 0;
+            overflow: hidden;
+            border: 2px solid #00ff00;
+            box-shadow: 
+                0 0 20px rgba(0, 255, 0, 0.5),
+                inset 0 0 50px rgba(0, 0, 0, 0.5);
+            position: relative;
+        }
+
+        .video-section::before {
+            content: "";
+            position: absolute;
+            top: -2px;
+            left: -2px;
+            right: -2px;
+            bottom: -2px;
+            background: 
+                linear-gradient(90deg, #00ff00, #00ffff, #ff00ff, #00ff00),
+                linear-gradient(90deg, #00ff00, #00ffff, #ff00ff, #00ff00);
+            background-size: 100% 2px, 2px 100%;
+            background-repeat: no-repeat;
+            background-position: 0 0, 0 0;
+            pointer-events: none;
+            animation: border-pulse 4s linear infinite;
+        }
+
+        @keyframes border-pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.5; }
+        }
+        
+        #video-feed {
+            width: 100%;
+            display: block;
+            background: #000;
+        }
+        
+        #video-canvas {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            cursor: crosshair;
+            z-index: 10;
+        }
+        
+        .video-overlay {
+            position: absolute;
+            top: 20px;
+            right: 20px;
+            background: rgba(0, 0, 0, 0.95);
+            padding: 20px;
+            border-radius: 0;
+            border: 2px solid #00ff00;
+            z-index: 20;
+            min-width: 200px;
+            box-shadow: 0 0 20px rgba(0, 255, 0, 0.4);
+        }
+        
+        .overlay-item {
+            margin: 10px 0;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 15px;
+            font-size: 1.1em;
+        }
+        
+        /* Control Panels */
+        .panel {
+            background: rgba(0, 0, 0, 0.9);
+            border-radius: 0;
+            padding: 20px;
+            margin-bottom: 20px;
+            border: 1px solid #00ff00;
+            box-shadow: 0 0 15px rgba(0, 255, 0, 0.2);
+        }
+
+        .panel:hover {
+            box-shadow: 0 0 25px rgba(0, 255, 0, 0.4);
+            border-color: #00ffff;
+        }
+        
+        .panel h3 {
+            margin-bottom: 15px;
+            padding-bottom: 10px;
+            border-bottom: 2px solid #00ff00;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            color: #00ffff;
+            text-transform: uppercase;
+            letter-spacing: 2px;
+            text-shadow: 0 0 10px #00ffff;
+        }
+        
+        .panel h3 .icon {
+            font-size: 1.5em;
+        }
+        
+        /* Controls Grid */
+        .controls-grid {
+            display: grid;
+            grid-template-columns: repeat(2, 1fr);
+            gap: 10px;
+        }
+        
+        .controls-grid.single {
+            grid-template-columns: 1fr;
+        }
+        
+        button {
+            background: rgba(0, 0, 0, 0.9);
+            color: #00ff00;
+            border: 2px solid #00ff00;
+            border-radius: 0;
+            padding: 15px 25px;
+            font-size: 14px;
+            font-weight: bold;
+            cursor: pointer;
+            transition: all 0.3s;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 10px;
+            min-height: 50px;
+            text-transform: uppercase;
+            letter-spacing: 2px;
+            position: relative;
+            overflow: hidden;
+        }
+
+        button::before {
+            content: "";
+            position: absolute;
+            top: 0;
+            left: -100%;
+            width: 100%;
+            height: 100%;
+            background: linear-gradient(90deg, transparent, rgba(0, 255, 0, 0.3), transparent);
+            transition: left 0.5s;
+        }
+
+        button:hover::before {
+            left: 100%;
+        }
+        
+        button:hover {
+            background: rgba(0, 255, 0, 0.1);
+            border-color: #00ffff;
+            box-shadow: 0 0 30px rgba(0, 255, 0, 0.6);
+            transform: translateY(-2px);
+            color: #00ffff;
+        }
+        
+        button:active {
+            transform: translateY(0);
+        }
+        
+        button.active {
+            background: rgba(255, 0, 255, 0.1);
+            border-color: #ff00ff;
+            color: #ff00ff;
+            text-shadow: 0 0 10px #ff00ff;
+            box-shadow: 0 0 30px rgba(255, 0, 255, 0.6);
+        }
+        
+        button.danger {
+            background: rgba(255, 0, 0, 0.1);
+            border-color: #ff0000;
+            color: #ff0000;
+            text-shadow: 0 0 10px #ff0000;
+        }
+        
+        button.danger:hover {
+            border-color: #ff4444;
+            box-shadow: 0 0 30px rgba(255, 0, 0, 0.8);
+            color: #ff4444;
+        }
+        
+        /* Toggle Buttons */
+        .toggle-btn {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+        
+        .toggle-indicator {
+            width: 20px;
+            height: 20px;
+            border-radius: 0;
+            background: #0a0a0a;
+            border: 2px solid #333;
+            transition: all 0.3s;
+            position: relative;
+        }
+
+        .toggle-indicator::before {
+            content: "";
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            width: 10px;
+            height: 10px;
+            background: #333;
+            transition: all 0.3s;
+        }
+        
+        .toggle-indicator.on {
+            background: rgba(0, 255, 0, 0.2);
+            border-color: #00ff00;
+            box-shadow: 0 0 20px rgba(0, 255, 0, 0.8), inset 0 0 20px rgba(0, 255, 0, 0.2);
+        }
+
+        .toggle-indicator.on::before {
+            background: #00ff00;
+            box-shadow: 0 0 10px #00ff00;
+        }
+        
+        /* Select/Inputs */
+        select, input[type="range"] {
+            width: 100%;
+            padding: 10px;
+            background: rgba(0, 0, 0, 0.9);
+            border: 1px solid #00ff00;
+            border-radius: 0;
+            color: #00ff00;
+            font-size: 14px;
+            margin: 5px 0;
+            font-family: 'Courier New', monospace;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+        }
+        
+        select:focus, input:focus {
+            outline: none;
+            border-color: #00ffff;
+            box-shadow: 0 0 20px rgba(0, 255, 255, 0.5);
+        }
+        
+        select option {
+            background: #0a0a0a;
+            color: #00ff00;
+        }
+
+        select:hover {
+            cursor: pointer;
+        }
+        
+        /* Range Slider */
+        input[type="range"] {
+            -webkit-appearance: none;
+            height: 8px;
+            background: #1a1a4a;
+            border-radius: 4px;
+        }
+        
+        input[type="range"]::-webkit-slider-thumb {
+            -webkit-appearance: none;
+            width: 20px;
+            height: 20px;
+            border-radius: 50%;
+            background: #00ffff;
+            cursor: pointer;
+            box-shadow: 0 0 10px rgba(0, 255, 255, 0.5);
+        }
+        
+        /* Logs */
+        .logs {
+            max-height: 300px;
+            overflow-y: auto;
+            background: rgba(0, 0, 0, 0.95);
+            border-radius: 0;
+            padding: 15px;
+            border: 1px solid #00ff00;
+            box-shadow: inset 0 0 30px rgba(0, 0, 0, 0.5);
+        }
+        
+        .log-entry {
+            padding: 8px 12px;
+            margin: 5px 0;
+            border-left: 3px solid #00ff00;
+            background: rgba(0, 255, 0, 0.05);
+            font-family: 'Courier New', monospace;
+            font-size: 13px;
+            display: flex;
+            gap: 10px;
+            align-items: flex-start;
+        }
+
+        .log-entry:hover {
+            background: rgba(0, 255, 0, 0.1);
+        }
+        
+        .log-time {
+            color: #00ffff;
+            min-width: 80px;
+            text-shadow: 0 0 5px #00ffff;
+        }
+        
+        .log-message {
+            color: #00ff00;
+            flex: 1;
+            text-shadow: 0 0 5px #00ff00;
+        }
+        
+        .log-entry.error {
+            border-left-color: #ff0000;
+            background: rgba(255, 0, 0, 0.05);
+        }
+        
+        .log-entry.warning {
+            border-left-color: #ffff00;
+            background: rgba(255, 255, 0, 0.05);
+        }
+        
+        .log-entry.success {
+            border-left-color: #00ff00;
+            background: rgba(0, 255, 0, 0.05);
+        }
+        
+        /* Connection Status */
+        .connection-status {
+            text-align: center;
+            padding: 15px;
+            margin-bottom: 20px;
+            border-radius: 0;
+            font-weight: bold;
+            font-size: 1.1em;
+            text-transform: uppercase;
+            letter-spacing: 2px;
+        }
+        
+        .connection-status.connected {
+            background: rgba(0, 255, 0, 0.1);
+            border: 2px solid #00ff00;
+            color: #00ff00;
+            text-shadow: 0 0 10px #00ff00;
+            box-shadow: 0 0 30px rgba(0, 255, 0, 0.5), inset 0 0 30px rgba(0, 255, 0, 0.1);
+            animation: connected-pulse 2s infinite;
+        }
+
+        @keyframes connected-pulse {
+            0%, 100% {
+                box-shadow: 0 0 30px rgba(0, 255, 0, 0.5), inset 0 0 30px rgba(0, 255, 0, 0.1);
+            }
+            50% {
+                box-shadow: 0 0 50px rgba(0, 255, 0, 0.8), inset 0 0 50px rgba(0, 255, 0, 0.15);
+            }
+        }
+        
+        .connection-status.disconnected {
+            background: rgba(255, 0, 0, 0.1);
+            border: 2px solid #ff0000;
+            color: #ff0000;
+            text-shadow: 0 0 10px #ff0000;
+            box-shadow: 0 0 30px rgba(255, 0, 0, 0.5), inset 0 0 30px rgba(255, 0, 0, 0.1);
+            animation: disconnected-pulse 0.5s infinite;
+        }
+
+        @keyframes disconnected-pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.5; }
+        }
+        
+        @keyframes pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.5; }
+        }
+        
+        /* Scrollbar */
+        ::-webkit-scrollbar {
+            width: 10px;
+        }
+        
+        ::-webkit-scrollbar-track {
+            background: #0a0a0a;
+        }
+        
+        ::-webkit-scrollbar-thumb {
+            background: #00ff00;
+            border-radius: 0;
+        }
+        
+        ::-webkit-scrollbar-thumb:hover {
+            background: #00ffff;
+        }
+        
+        /* Zone Drawing Mode */
+        .drawing-mode {
+            cursor: crosshair;
+        }
+        
+        .drawing-mode .video-section {
+            border-color: #ff00ff;
+            box-shadow: 0 0 50px rgba(255, 0, 255, 0.8), inset 0 0 50px rgba(255, 0, 255, 0.2);
+            animation: drawing-pulse 1s infinite;
+        }
+
+        @keyframes drawing-pulse {
+            0%, 100% {
+                box-shadow: 0 0 50px rgba(255, 0, 255, 0.8), inset 0 0 50px rgba(255, 0, 255, 0.2);
+            }
+            50% {
+                box-shadow: 0 0 80px rgba(255, 0, 255, 1), inset 0 0 80px rgba(255, 0, 255, 0.3);
+            }
+        }
+        
+        /* Snapshot Modal */
+        .modal {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0, 0, 0, 0.9);
+            z-index: 1000;
+            justify-content: center;
+            align-items: center;
+        }
+        
+        .modal.show {
+            display: flex;
+        }
+        
+        .modal-content {
+            background: rgba(0, 0, 0, 0.95);
+            border-radius: 0;
+            padding: 30px;
+            border: 2px solid #00ff00;
+            max-width: 90%;
+            max-height: 90%;
+            overflow: auto;
+            box-shadow: 0 0 50px rgba(0, 255, 0, 0.5);
+        }
+
+        .modal-content h2 {
+            text-shadow: 0 0 20px #00ff00;
+            letter-spacing: 3px;
+        }
+        
+        .modal-content img {
+            max-width: 100%;
+            border-radius: 10px;
+            margin-bottom: 20px;
+        }
+        
+        .modal-close {
+            position: absolute;
+            top: 20px;
+            right: 20px;
+            background: #ff0000;
+            color: #fff;
+            border: none;
+            width: 40px;
+            height: 40px;
+            border-radius: 50%;
+            cursor: pointer;
+            font-size: 24px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>RIFTECH SECURITY SYSTEM</h1>
+            <p class="subtitle">Advanced AI-Powered Monitoring System</p>
+            
+            <div class="status-bar">
+                <div class="status-item">
+                    <span class="status-icon">📡</span>
+                    <span class="status-label">Connection:</span>
+                    <span id="connection-status" class="status-value">Disconnected</span>
+                </div>
+                <div class="status-item">
+                    <span class="status-icon">👥</span>
+                    <span class="status-label">Clients:</span>
+                    <span id="client-count" class="status-value">0</span>
+                </div>
+                <div class="status-item">
+                    <span class="status-icon">👤</span>
+                    <span class="status-label">Persons:</span>
+                    <span id="person-count" class="status-value">0</span>
+                </div>
+                <div class="status-item">
+                    <span class="status-icon">🚨</span>
+                    <span class="status-label">Alerts:</span>
+                    <span id="alert-count" class="status-value">0</span>
+                </div>
+                <div class="status-item">
+                    <span class="status-icon">🎬</span>
+                    <span class="status-label">Recording:</span>
+                    <span id="recording-status" class="status-value">Off</span>
+                </div>
+                <div class="status-item">
+                    <span class="status-icon">🔒</span>
+                    <span class="status-label">Zone:</span>
+                    <span id="zone-status" class="status-value">Clear</span>
+                </div>
+                <div class="status-item">
+                    <span class="status-icon">⏱️</span>
+                    <span class="status-label">FPS:</span>
+                    <span id="fps-counter" class="status-value">0</span>
+                </div>
+            </div>
+        </header>
+        
+        <!-- Video Section -->
+        <div class="video-section">
+            <img id="video-feed" alt="Security Camera Feed" />
+            <canvas id="video-canvas"></canvas>
+            
+            <div class="video-overlay">
+                <div class="overlay-item">
+                    <span>🔒</span>
+                    <span id="arm-status-text">Unknown</span>
+                </div>
+                <div class="overlay-item">
+                    <span>⚠️</span>
+                    <span id="breach-duration">0s</span>
+                </div>
+                <div class="overlay-item">
+                    <span>🎯</span>
+                    <span id="zone-count">0 zones</span>
+                </div>
+            </div>
+        </div>
+        
+        <!-- Control Panels -->
+        <div class="control-section">
+            <div class="connection-status disconnected" id="connection-alert">
+                ⚠️ Disconnected from server. Reconnecting...
+            </div>
+            
+            <!-- Main Controls -->
+            <div class="panel">
+                <h3><span class="icon">⚡</span> CONTROLS</h3>
+                <div class="controls-grid">
+                    <button id="arm-btn" onclick="toggleArm()">
+                        <div class="toggle-indicator" id="arm-indicator"></div>
+                        <span id="arm-btn-text">ARM SYSTEM</span>
+                    </button>
+                    <button id="record-btn" onclick="toggleRecord()">
+                        <div class="toggle-indicator" id="record-indicator"></div>
+                        <span id="record-btn-text">RECORD</span>
+                    </button>
+                    <button onclick="takeSnapshot()">
+                        📸 SNAPSHOT
+                    </button>
+                    <button id="mute-btn" onclick="toggleMute()">
+                        <div class="toggle-indicator" id="mute-indicator"></div>
+                        <span id="mute-btn-text">MUTE</span>
+                    </button>
+                </div>
+            </div>
+            
+            <!-- Detection Settings -->
+            <div class="panel">
+                <h3><span class="icon">🎯</span> DETECTION</h3>
+                
+                <div style="margin-bottom: 15px;">
+                    <label style="display: block; margin-bottom: 5px; color: #8080ff;">Confidence Level:</label>
+                    <select id="confidence-select" onchange="setConfidence()">
+                        <option value="0.15">15% (High Sensitivity)</option>
+                        <option value="0.20">20% (High)</option>
+                        <option value="0.25" selected>25% (Medium)</option>
+                        <option value="0.30">30% (Medium)</option>
+                        <option value="0.40">40% (Low)</option>
+                        <option value="0.50">50% (Low)</option>
+                    </select>
+                </div>
+                
+                <div style="margin-bottom: 15px;">
+                    <label style="display: block; margin-bottom: 5px; color: #8080ff;">YOLO Model:</label>
+                    <select id="model-select" onchange="setModel()">
+                        <option value="yolov8n.pt" selected>YOLOv8 Nano (Fast)</option>
+                        <option value="yolov8s.pt">YOLOv8 Small (Balanced)</option>
+                        <option value="yolov8m.pt">YOLOv8 Medium (Accurate)</option>
+                    </select>
+                </div>
+                
+                <div class="controls-grid single">
+                    <button id="skeleton-btn" onclick="toggleSkeleton()">
+                        <div class="toggle-indicator" id="skeleton-indicator"></div>
+                        <span>🦴 Skeleton Detection</span>
+                    </button>
+                    <button id="face-btn" onclick="toggleFace()">
+                        <div class="toggle-indicator on" id="face-indicator"></div>
+                        <span>👤 Face Recognition</span>
+                    </button>
+                    <button id="motion-btn" onclick="toggleMotion()">
+                        <div class="toggle-indicator on" id="motion-indicator"></div>
+                        <span>📡 Motion Detection</span>
+                    </button>
+                    <button id="heatmap-btn" onclick="toggleHeatmap()">
+                        <div class="toggle-indicator" id="heatmap-indicator"></div>
+                        <span>🔥 Heat Map</span>
+                    </button>
+                    <button id="night-btn" onclick="toggleNightVision()">
+                        <div class="toggle-indicator" id="night-indicator"></div>
+                        <span>🌙 Night Vision</span>
+                    </button>
+                </div>
+            </div>
+            
+            <!-- Zone Management -->
+            <div class="panel">
+                <h3><span class="icon">🎯</span> ZONES</h3>
+                <div class="controls-grid">
+                    <button onclick="createZone()">
+                        ➕ NEW ZONE
+                    </button>
+                    <button id="draw-btn" onclick="toggleDrawMode()">
+                        <div class="toggle-indicator" id="draw-indicator"></div>
+                        <span>✏️ DRAW</span>
+                    </button>
+                </div>
+        <p style="margin: 15px 0; color: #00ffff; font-size: 0.9em; text-transform: uppercase; letter-spacing: 1px;">
+            [INFO] Click on video feed to add zone points. Minimum 3 points required.
+        </p>
+                <button class="danger" onclick="clearZones()">
+                    🗑️ CLEAR ALL ZONES
+                </button>
+            </div>
+            
+            <!-- Trusted Faces -->
+            <div class="panel">
+                <h3><span class="icon">👤</span> TRUSTED FACES</h3>
+                <div class="overlay-item" style="margin-bottom: 15px;">
+                    <span>📷</span>
+                    <span>Loaded: <span id="faces-count">0</span> faces</span>
+                </div>
+                <button onclick="reloadFaces()">
+                    🔄 RELOAD FACES
+                </button>
+            </div>
+            
+            <!-- Statistics -->
+            <div class="panel">
+                <h3><span class="icon">📊</span> STATISTICS</h3>
+                <div class="controls-grid single">
+                    <div class="overlay-item">
+                        <span>⏱️</span>
+                        <span>Breach Duration: <span id="breach-duration-stat">0s</span></span>
+                    </div>
+                    <div class="overlay-item">
+                        <span>👥</span>
+                        <span>Connected Clients: <span id="clients-stat">0</span></span>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Activity Log -->
+            <div class="panel">
+                <h3><span class="icon">📋</span> ACTIVITY LOG</h3>
+                <div class="logs" id="log-container">
+                    <div class="log-entry">
+                        <span class="log-time">System</span>
+                        <span class="log-message">Initializing web interface...</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <!-- Snapshot Modal -->
+    <div class="modal" id="snapshot-modal">
+        <button class="modal-close" onclick="closeSnapshotModal()">×</button>
+        <div class="modal-content">
+            <h2 style="margin-bottom: 20px; color: #00ff00; text-transform: uppercase; letter-spacing: 3px;">📸 SNAPSHOT</h2>
+            <img id="snapshot-image" alt="Snapshot" />
+            <p id="snapshot-time" style="color: #00ffff; margin-top: 10px; text-transform: uppercase;"></p>
+        </div>
+    </div>
+
+    <script>
+        const WS_URL = `ws://${window.location.hostname}:8765`;
+        let ws = null;
+        let connected = false;
+        
+        let frameCount = 0;
+        let fpsTimer = null;
+        let lastFrameTime = Date.now();
+        
+        // State
+        let isDrawing = false;
+        let zonePoints = [];
+        
+        // Initialize
+        document.addEventListener('DOMContentLoaded', () => {
+            setupCanvas();
+            connectWebSocket();
+        });
+        
+        function setupCanvas() {
+            const canvas = document.getElementById('video-canvas');
+            const video = document.getElementById('video-feed');
+            
+            canvas.width = 1280;
+            canvas.height = 720;
+            
+            canvas.addEventListener('click', (e) => {
+                if (isDrawing) {
+                    addZonePoint(e);
+                }
+            });
+        }
+        
+        function connectWebSocket() {
+            ws = new WebSocket(WS_URL);
+            
+            ws.onopen = () => {
+                connected = true;
+                updateConnectionUI();
+                addLog('Connected to server', 'success');
+                requestStatus();
+                startFPSCounter();
+            };
+            
+            ws.onclose = () => {
+                connected = false;
+                updateConnectionUI();
+                addLog('Disconnected from server', 'error');
+                stopFPSCounter();
+                setTimeout(connectWebSocket, 3000);
+            };
+            
+            ws.onerror = (error) => {
+                console.error('[WebSocket] Error:', error);
+                addLog('WebSocket error occurred', 'error');
+            };
+            
+            ws.onmessage = (event) => {
+                try {
+                    const message = JSON.parse(event.data);
+                    handleMessage(message);
+                } catch (e) {
+                    console.error('[WebSocket] Error parsing message:', e);
+                }
+            };
+        }
+        
+        function handleMessage(message) {
+            switch (message.type) {
+                case 'frame':
+                    updateVideoFeed(message.data);
+                    frameCount++;
+                    break;
+                    
+                case 'status':
+                    updateStatus(message);
+                    break;
+                    
+                case 'snapshot':
+                    showSnapshot(message.data);
+                    break;
+                    
+                case 'zones':
+                    updateZones(message.zones);
+                    break;
+            }
+        }
+        
+        function updateVideoFeed(data) {
+            const img = document.getElementById('video-feed');
+            img.src = `data:image/jpeg;base64,${data}`;
+        }
+        
+        function updateConnectionUI() {
+            const statusEl = document.getElementById('connection-status');
+            const alertEl = document.getElementById('connection-alert');
+            
+            if (connected) {
+                statusEl.textContent = 'Connected';
+                statusEl.className = 'status-value';
+                alertEl.className = 'connection-status connected';
+                alertEl.textContent = '✅ Connected to server';
+            } else {
+                statusEl.textContent = 'Disconnected';
+                statusEl.className = 'status-value danger';
+                alertEl.className = 'connection-status disconnected';
+                alertEl.textContent = '⚠️ Disconnected from server. Reconnecting...';
+            }
+        }
+        
+        function updateStatus(status) {
+            document.getElementById('client-count').textContent = status.clients;
+            document.getElementById('person-count').textContent = status.persons;
+            document.getElementById('alert-count').textContent = status.alerts;
+            document.getElementById('clients-stat').textContent = status.clients;
+            
+            // Arm status
+            updateToggle('arm', status.armed);
+            document.getElementById('arm-status-text').textContent = status.armed ? 'ARMED' : 'DISARMED';
+            document.getElementById('arm-status-text').style.color = status.armed ? '#00ff00' : '#ff0000';
+            
+            // Recording status
+            updateToggle('record', status.recording);
+            document.getElementById('recording-status').textContent = status.recording ? 'On' : 'Off';
+            document.getElementById('recording-status').className = status.recording ? 'status-value danger' : 'status-value';
+            
+            // Mute status
+            updateToggle('mute', status.muted);
+            
+            // Zone breach status
+            document.getElementById('zone-status').textContent = status.breach_active ? 'BREACH' : 'Clear';
+            document.getElementById('zone-status').className = status.breach_active ? 'status-value danger' : 'status-value';
+            document.getElementById('breach-duration').textContent = `${status.breach_duration}s`;
+            document.getElementById('breach-duration-stat').textContent = `${status.breach_duration}s`;
+            
+            // Detection features
+            updateToggle('skeleton', status.skeleton);
+            updateToggle('face', status.face);
+            updateToggle('motion', status.motion);
+            updateToggle('heatmap', status.heatmap);
+            updateToggle('night', status.night_vision);
+            
+            // Zone count
+            document.getElementById('zone-count').textContent = `${status.zones} zones`;
+            
+            // Faces count
+            document.getElementById('faces-count').textContent = status.faces;
+            
+            // Model and confidence
+            document.getElementById('confidence-select').value = status.confidence;
+            document.getElementById('model-select').value = status.model;
+        }
+        
+        function updateToggle(name, enabled) {
+            const indicator = document.getElementById(`${name}-indicator`);
+            if (indicator) {
+                if (enabled) {
+                    indicator.classList.add('on');
+                } else {
+                    indicator.classList.remove('on');
+                }
+            }
+        }
+        
+        function requestStatus() {
+            if (ws && ws.readyState === WebSocket.OPEN) {
+                ws.send(JSON.stringify({ type: 'get_status' }));
+            }
+        }
+        
+        function startFPSCounter() {
+            if (fpsTimer) return;
+            
+            fpsTimer = setInterval(() => {
+                const now = Date.now();
+                const elapsed = (now - lastFrameTime) / 1000;
+                const fps = Math.round(frameCount / elapsed);
+                
+                document.getElementById('fps-counter').textContent = fps;
+                
+                frameCount = 0;
+                lastFrameTime = now;
+            }, 1000);
+        }
+        
+        function stopFPSCounter() {
+            if (fpsTimer) {
+                clearInterval(fpsTimer);
+                fpsTimer = null;
+            }
+            document.getElementById('fps-counter').textContent = '0';
+        }
+        
+        function addLog(message, type = 'info') {
+            const container = document.getElementById('log-container');
+            const now = new Date();
+            const time = now.toLocaleTimeString();
+            
+            const entry = document.createElement('div');
+            entry.className = `log-entry ${type}`;
+            entry.innerHTML = `
+                <span class="log-time">${time}</span>
+                <span class="log-message">${message}</span>
+            `;
+            
+            container.insertBefore(entry, container.firstChild);
+            
+            while (container.children.length > 100) {
+                container.removeChild(container.lastChild);
+            }
+        }
+        
+        function sendCommand(type, data = {}) {
+            if (ws && ws.readyState === WebSocket.OPEN) {
+                ws.send(JSON.stringify({ type, ...data }));
+            } else {
+                addLog('Not connected to server', 'error');
+            }
+        }
+        
+        // Controls
+        function toggleArm() {
+            const currentState = document.getElementById('arm-indicator').classList.contains('on');
+            const newState = !currentState;
+            sendCommand('toggle_arm', { value: newState });
+            updateToggle('arm', newState);
+            addLog(`System ${newState ? 'ARMED' : 'DISARMED'}`, newState ? 'warning' : 'success');
+        }
+        
+        function toggleRecord() {
+            const currentState = document.getElementById('record-indicator').classList.contains('on');
+            const newState = !currentState;
+            sendCommand('toggle_record', { value: newState });
+            updateToggle('record', newState);
+            addLog(`Recording ${newState ? 'STARTED' : 'STOPPED'}`, newState ? 'warning' : 'success');
+        }
+        
+        function takeSnapshot() {
+            sendCommand('snapshot');
+            addLog('Snapshot requested', 'info');
+        }
+        
+        function toggleMute() {
+            const currentState = document.getElementById('mute-indicator').classList.contains('on');
+            const newState = !currentState;
+            sendCommand('toggle_mute', { value: newState });
+            updateToggle('mute', newState);
+            addLog(`Alarm ${newState ? 'MUTED' : 'UNMUTED'}`, newState ? 'warning' : 'success');
+        }
+        
+        function setConfidence() {
+            const value = parseFloat(document.getElementById('confidence-select').value);
+            sendCommand('set_confidence', { value });
+            addLog(`Confidence set to ${(value * 100).toFixed(0)}%`, 'info');
+        }
+        
+        function setModel() {
+            const value = document.getElementById('model-select').value;
+            sendCommand('set_model', { value });
+            addLog(`Model changed to ${value}`, 'info');
+        }
+        
+        function toggleSkeleton() {
+            const currentState = document.getElementById('skeleton-indicator').classList.contains('on');
+            const newState = !currentState;
+            sendCommand('toggle_skeleton', { value: newState });
+            updateToggle('skeleton', newState);
+            addLog(`Skeleton detection ${newState ? 'ENABLED' : 'DISABLED'}`, 'info');
+        }
+        
+        function toggleFace() {
+            const currentState = document.getElementById('face-indicator').classList.contains('on');
+            const newState = !currentState;
+            sendCommand('toggle_face', { value: newState });
+            updateToggle('face', newState);
+            addLog(`Face recognition ${newState ? 'ENABLED' : 'DISABLED'}`, 'info');
+        }
+        
+        function toggleMotion() {
+            const currentState = document.getElementById('motion-indicator').classList.contains('on');
+            const newState = !currentState;
+            sendCommand('toggle_motion', { value: newState });
+            updateToggle('motion', newState);
+            addLog(`Motion detection ${newState ? 'ENABLED' : 'DISABLED'}`, 'info');
+        }
+        
+        function toggleHeatmap() {
+            const currentState = document.getElementById('heatmap-indicator').classList.contains('on');
+            const newState = !currentState;
+            sendCommand('toggle_heatmap', { value: newState });
+            updateToggle('heatmap', newState);
+            addLog(`Heat map ${newState ? 'ENABLED' : 'DISABLED'}`, 'info');
+        }
+        
+        function toggleNightVision() {
+            const currentState = document.getElementById('night-indicator').classList.contains('on');
+            const newState = !currentState;
+            sendCommand('toggle_night_vision', { value: newState });
+            updateToggle('night', newState);
+            addLog(`Night vision ${newState ? 'ENABLED' : 'DISABLED'}`, 'info');
+        }
+        
+        function createZone() {
+            sendCommand('create_zone');
+            addLog('New zone created', 'success');
+        }
+        
+        function toggleDrawMode() {
+            isDrawing = !isDrawing;
+            updateToggle('draw', isDrawing);
+            
+            const body = document.body;
+            if (isDrawing) {
+                body.classList.add('drawing-mode');
+                addLog('Zone drawing mode ENABLED', 'warning');
+            } else {
+                body.classList.remove('drawing-mode');
+                zonePoints = [];
+                addLog('Zone drawing mode DISABLED', 'info');
+            }
+        }
+        
+        function addZonePoint(event) {
+            const canvas = document.getElementById('video-canvas');
+            const rect = canvas.getBoundingClientRect();
+            
+            const scaleX = 1280 / rect.width;
+            const scaleY = 720 / rect.height;
+            
+            const x = Math.round((event.clientX - rect.left) * scaleX);
+            const y = Math.round((event.clientY - rect.top) * scaleY);
+            
+            sendCommand('add_zone_point', { x, y });
+            zonePoints.push({ x, y });
+            
+            // Draw point on canvas
+            const ctx = canvas.getContext('2d');
+            ctx.fillStyle = '#00ffff';
+            ctx.beginPath();
+            ctx.arc(x, y, 8, 0, 2 * Math.PI);
+            ctx.fill();
+            
+            // Draw lines between points
+            if (zonePoints.length > 1) {
+                ctx.strokeStyle = '#00ffff';
+                ctx.lineWidth = 2;
+                ctx.beginPath();
+                ctx.moveTo(zonePoints[0].x, zonePoints[0].y);
+                for (let i = 1; i < zonePoints.length; i++) {
+                    ctx.lineTo(zonePoints[i].x, zonePoints[i].y);
+                }
+                ctx.stroke();
+            }
+            
+            addLog(`Zone point added: (${x}, ${y})`, 'info');
+        }
+        
+        function clearZones() {
+            if (confirm('Are you sure you want to clear all zones?')) {
+                sendCommand('clear_zones');
+                addLog('All zones cleared', 'warning');
+                
+                // Clear canvas
+                const canvas = document.getElementById('video-canvas');
+                const ctx = canvas.getContext('2d');
+                ctx.clearRect(0, 0, canvas.width, canvas.height);
+                zonePoints = [];
+            }
+        }
+        
+        function reloadFaces() {
+            sendCommand('reload_faces');
+            addLog('Reloading trusted faces...', 'info');
+        }
+        
+        function showSnapshot(data) {
+            const modal = document.getElementById('snapshot-modal');
+            const img = document.getElementById('snapshot-image');
+            const time = document.getElementById('snapshot-time');
+            
+            img.src = `data:image/jpeg;base64,${data}`;
+            time.textContent = `Captured at ${new Date().toLocaleString()}`;
+            
+            modal.classList.add('show');
+            addLog('Snapshot received', 'success');
+        }
+        
+        function closeSnapshotModal() {
+            document.getElementById('snapshot-modal').classList.remove('show');
+        }
+        
+        // Auto-refresh status every 5 seconds
+        setInterval(() => {
+            if (connected) {
+                requestStatus();
+            }
+        }, 5000);
+    </script>
+</body>
+</html>
