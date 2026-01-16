@@ -164,31 +164,61 @@ class SecurityWebSystem:
             return True  # Continue without detection
     
     def capture_frame(self):
-        """Capture frame dan process dengan RTSP fix."""
+        """Capture frame dengan RTSP fix untuk mengatasi stuck frame."""
         if self.camera_available and self.cap and self.cap.isOpened():
             try:
-                ret, frame = self.cap.read()
+                # Clear buffer untuk RTSP (hindari frame lama)
+                self.cap.set(cv2.CAP_PROP_POS_FRAMES, 0)
                 
-                if ret and frame is not None and isinstance(frame, np.ndarray):
-                    with self.frame_lock:
-                        self.current_frame = frame.copy()
+                # Baca frame dengan retry
+                max_retries = 3
+                frame = None
+                
+                for retry in range(max_retries):
+                    ret, temp_frame = self.cap.read()
                     
-                    # Submit ke detection thread
-                    if self.detection_thread and not self.demo_mode:
-                        self.detection_thread.submit(frame)
-                    
-                    self.consecutive_failures = 0
-                    return frame
-                else:
+                    if ret and temp_frame is not None and isinstance(temp_frame, np.ndarray):
+                        frame = temp_frame
+                        
+                        # Cek jika frame valid (bukan frame kosong)
+                        if frame.shape[0] > 0 and frame.shape[1] > 0:
+                            # Submit ke detection thread
+                            if self.detection_thread and not self.demo_mode:
+                                self.detection_thread.submit(frame)
+                            
+                            self.consecutive_failures = 0
+                            return frame
+                        else:
+                            logging.warning(f"[Capture] Invalid frame shape: {frame.shape}")
+                    else:
+                        if retry < max_retries - 1:
+                            logging.warning(f"[Capture] Retry {retry + 1}/{max_retries}")
+                            time.sleep(0.05)
+                
+                # Jika semua retry gagal
+                if frame is None:
                     self.consecutive_failures += 1
                     if self.consecutive_failures > self.max_consecutive_failures:
-                        logging.warning(f"[Capture] Too many failures, using last frame")
+                        logging.error(f"[Capture] Too many failures, reconnecting...")
+                        # Coba reconnect kamera
+                        self.cap.release()
+                        time.sleep(1)
+                        self.cap = cv2.VideoCapture(Config.CAMERA_SOURCE if self.config else 0)
+                        if self.cap.isOpened():
+                            self.cap.set(cv2.CAP_PROP_FRAME_WIDTH, 1280)
+                            self.cap.set(cv2.CAP_PROP_FRAME_HEIGHT, 720)
+                            self.cap.set(cv2.CAP_PROP_FPS, 30)
+                            self.cap.set(cv2.CAP_PROP_BUFFERSIZE, 1)
+                            self.consecutive_failures = 0
+                            return self.capture_frame()
             except Exception as e:
                 logging.error(f"[Capture] Error: {e}")
+                self.consecutive_failures += 1
         
         # Use last frame or create demo frame
         with self.frame_lock:
             if self.current_frame is not None:
+                # Return frame baru dengan timestamp update untuk mencegah cache di browser
                 return self.current_frame.copy()
         
         # Create demo frame
