@@ -13,8 +13,8 @@ echo "1. Uninstall MediaPipe 0.10.31 (corrupt)..."
 pip uninstall -y mediapipe
 
 echo ""
-echo "2. Install MediaPipe 0.10.0 (stable version)..."
-pip install mediapipe==0.10.0
+echo "2. Install MediaPipe 0.10.14 (stable version)..."
+pip install mediapipe==0.10.14
 
 echo ""
 echo "3. Verify installation..."
