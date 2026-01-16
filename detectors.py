@@ -173,6 +173,7 @@ class PersonDetector:
         self.mp_pose = None
         if MEDIAPIPE_AVAILABLE:
             try:
+                import mediapipe as mp
                 self.mp_pose = mp.solutions.pose
             except Exception as e:
                 print(f"[Detector] Error accessing mp.solutions: {e}")
