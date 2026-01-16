@@ -69,7 +69,8 @@
             display: grid;
             grid-template-columns: 1fr 380px;
             gap: 15px;
-            height: calc(100vh - 20px);
+            height: auto;
+            min-height: calc(100vh - 20px);
         }
         
         @media (max-width: 1400px) {
@@ -211,6 +212,7 @@
                 0 0 20px rgba(0, 255, 0, 0.5),
                 inset 0 0 50px rgba(0, 0, 0, 0.5);
             position: relative;
+            min-height: 500px;
         }
 
         .video-section::before {
