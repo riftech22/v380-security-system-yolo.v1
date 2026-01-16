@@ -314,9 +314,12 @@ class PersonDetector:
         Returns:
             Preprocessed frame at target_size
         """
-        # Step 1: Resize to target resolution
         h, w = frame.shape[:2]
-        if (w, h) != target_size:
+        
+        # Step 1: Resize to target resolution ONLY if different
+        # But DON'T resize if frame is already 1280x360 (split frame!)
+        # Split frame crops are 1280x360, we should keep them at that size
+        if (w, h) != target_size and (w, h) != (1280, 360):
             frame = cv2.resize(frame, target_size, interpolation=cv2.INTER_LINEAR)
         
         # Step 2: Calculate brightness statistics
@@ -434,11 +437,13 @@ class PersonDetector:
             List of PersonDetection objects with adjusted coordinates
         """
         # Step 1: Resize original frame to 1280x720 first
-        h, w = frame.shape[:2]
-        if (w, h) != (1280, 720):
+        if frame.shape[1] != 1280 or frame.shape[0] != 720:
             frame = cv2.resize(frame, (1280, 720), interpolation=cv2.INTER_LINEAR)
         
-        # Step 2: Crop frame BEFORE preprocessing (important!)
+        # Step 2: Get current dimensions AFTER resize
+        h, w = frame.shape[:2]
+        
+        # Step 3: Crop frame BEFORE preprocessing (important!)
         mid_y = h // 2
         top_frame_raw = frame[:mid_y, :]
         bottom_frame_raw = frame[mid_y:, :]
@@ -735,8 +740,11 @@ class PersonDetector:
         output = frame.copy()
         h, w = frame.shape[:2]
         
+        print(f"[DEBUG] Frame size: {w}x{h}")
+        
         # Check if frame is split (1280x720 resolution)
         if w == 1280 and h == 720:
+            print(f"[DEBUG] Entering SPLIT FRAME mode")
             try:
                 persons = self.detect_split_frame(frame)
                 
@@ -774,7 +782,8 @@ class PersonDetector:
                 print(f"[Detector] Split frame error: {e}")
                 persons = []
         
-        # Run YOLO detection
+        # Run YOLO detection (non-split frame)
+        print(f"[DEBUG] Running SINGLE camera detection (non-split frame)")
         try:
             with self._lock:
                 results = self.model(frame, conf=self.confidence, classes=[0], verbose=False)
@@ -814,6 +823,9 @@ class PersonDetector:
         # Draw detections
         for p in persons:
             x1, y1, x2, y2 = p.bbox
+            
+            # Debug: Print bbox coordinates
+            print(f"[DEBUG] Person bbox: ({x1}, {y1}) -> ({x2}, {y2}), size: {x2-x1}x{y2-y1}")
             
             # Draw bounding box
             cv2.rectangle(output, (x1, y1), (x2, y2), (0, 255, 0), 2)
