@@ -67,12 +67,21 @@ _mp_solutions = None
 
 try:
     import mediapipe as mp
-    if hasattr(mp, 'solutions'):
-        _mp_solutions = mp.solutions
+    
+    # Try new MediaPipe 0.10.x+ API first
+    try:
+        from mediapipe.python.solutions import pose as mp_pose_solutions
+        _mp_solutions = mp_pose_solutions
         MEDIAPIPE_AVAILABLE = True
-        logger.info("[MediaPipe] Available - skeleton detection enabled")
-    else:
-        logger.warning("[MediaPipe] mp.solutions not available, skeleton detection disabled")
+        logger.info("[MediaPipe] Available (0.10.x+ API) - skeleton detection enabled")
+    except (ImportError, AttributeError):
+        # Fallback to old MediaPipe API
+        if hasattr(mp, 'solutions'):
+            _mp_solutions = mp.solutions
+            MEDIAPIPE_AVAILABLE = True
+            logger.info("[MediaPipe] Available (old API) - skeleton detection enabled")
+        else:
+            logger.warning("[MediaPipe] mp.solutions not available, skeleton detection disabled")
 except ImportError:
     logger.warning("[MediaPipe] Not installed, skeleton detection disabled")
 except Exception as e:
