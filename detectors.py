@@ -426,36 +426,55 @@ class PersonDetector:
             return 0.0
     
     def detect_split_frame(self, frame, top_conf=0.4, bottom_conf=0.4):
-        """Detect persons in split frame (2 cameras) with Frigate-style techniques.
+        """Detect persons in V380 split frame with enhanced dual-lens handling.
+        
+        V380 Dual-Lens Camera Anatomy:
+        - Total Frame: 1280 x 720 px (HD)
+        - Top Split (Fixed Wide): (0,0) to (1280,360) - Wide angle, area monitoring
+        - Bottom Split (PTZ): (0,360) to (1280,720) - Tracking, detail view
+        
+        Key Consideration: Each split has extreme aspect ratio (1280:360 = 3.5:1)
+        Without proper letterboxing, people appear distorted (short/wide) causing AI confusion.
         
         Args:
-            frame: Input frame (can be any resolution, will be resized to 1280x720)
-            top_conf: Confidence threshold for top camera (Frigate: 0.4)
-            bottom_conf: Confidence threshold for bottom camera (Frigate: 0.4)
+            frame: Input frame (can be any resolution, will be normalized to 1280x720)
+            top_conf: Confidence threshold for top camera (wide angle)
+            bottom_conf: Confidence threshold for bottom camera (PTZ tracking)
             
         Returns:
             List of PersonDetection objects with adjusted coordinates
         """
-        # Step 1: Resize original frame to 1280x720 first
+        # Step 1: Normalize to standard V380 resolution (1280x720)
+        # This ensures consistent split point regardless of input resolution
+        print(f"[V380 Split] Input frame: {frame.shape[1]}x{frame.shape[0]}")
         if frame.shape[1] != 1280 or frame.shape[0] != 720:
             frame = cv2.resize(frame, (1280, 720), interpolation=cv2.INTER_LINEAR)
+            print(f"[V380 Split] Resized to: {frame.shape[1]}x{frame.shape[0]}")
         
-        # Step 2: Get current dimensions AFTER resize
+        # Step 2: Get normalized dimensions
         h, w = frame.shape[:2]
+        print(f"[V380 Split] Processing frame: {w}x{h}")
         
-        # Step 3: Crop frame BEFORE preprocessing (important!)
-        mid_y = h // 2
-        top_frame_raw = frame[:mid_y, :]
-        bottom_frame_raw = frame[mid_y:, :]
+        # Step 3: Crop at exact split point (360px for 720p)
+        # V380 vertical stacking: Top (0-360) and Bottom (360-720)
+        split_point = h // 2  # 360px for 720p
+        print(f"[V380 Split] Split point at y={split_point}")
+        top_frame_raw = frame[:split_point, :]  # Wide angle: 1280x360
+        bottom_frame_raw = frame[split_point:, :]  # PTZ: 1280x360
+        print(f"[V380 Split] Top crop: {top_frame_raw.shape[1]}x{top_frame_raw.shape[0]}, Bottom crop: {bottom_frame_raw.shape[1]}x{bottom_frame_raw.shape[0]}")
+        mid_y = split_point  # Keep mid_y for coordinate mapping
         
-        # Step 3: Preprocess each crop separately
+        # Step 4: Preprocess each crop separately
         top_frame = self._preprocess_frame(top_frame_raw)
         bottom_frame = self._preprocess_frame(bottom_frame_raw)
+        print(f"[V380 Split] Preprocessed top: {top_frame.shape[1]}x{top_frame.shape[0]}, bottom: {bottom_frame.shape[1]}x{bottom_frame.shape[0]}")
         
-        # Step 4: Resize with LETTERBOXING (maintain aspect ratio, don't stretch!)
+        # Step 5: Resize with LETTERBOXING (maintain aspect ratio, don't stretch!)
+        # This prevents distortion of human shapes due to extreme aspect ratio (3.5:1)
         DETECTION_SIZE = 640
         top_frame_detect = self._letterbox_resize(top_frame, DETECTION_SIZE)
         bottom_frame_detect = self._letterbox_resize(bottom_frame, DETECTION_SIZE)
+        print(f"[V380 Split] Letterboxed to: {top_frame_detect.shape[1]}x{top_frame_detect.shape[0]}")
         
         top_persons = []
         bottom_persons = []
@@ -583,7 +602,7 @@ class PersonDetector:
                         
                         cx, cy = (x1 + x2) // 2, (y1 + y2) // 2
                         
-                        # Adjust coordinates to full frame (bottom region: mid_y-h)
+                        # Adjust coordinates to full frame (bottom region: mid_y to h)
                         person = PersonDetection(
                             center=(cx, cy + mid_y),
                             foot_center=(cx, y2 + mid_y),
@@ -621,6 +640,7 @@ class PersonDetector:
             all_persons.append(person)
             track_id += 1
         
+        print(f"[V380 Split] Final result: {len(all_persons)} persons detected (Top: {len(top_persons)}, Bottom: {len(bottom_persons)})")
         return all_persons
     
     def _refine_bboxes_with_skeleton(self, frame: np.ndarray, persons: List[PersonDetection], offset_y: int = 0) -> List[PersonDetection]:
