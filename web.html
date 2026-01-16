@@ -68,15 +68,286 @@
             padding: 10px;
             display: grid;
             grid-template-columns: 1fr 380px;
-            gap: 15px;
+            gap: 20px;
             height: auto;
             min-height: calc(100vh - 20px);
         }
         
-        @media (max-width: 1400px) {
+        /* Tablet Layout */
+        @media (max-width: 1200px) {
             .container {
                 grid-template-columns: 1fr;
-                height: auto;
+                gap: 15px;
+                padding: 10px;
+            }
+            
+            .status-bar {
+                gap: 5px;
+            }
+            
+            .status-item {
+                min-width: 80px;
+                padding: 6px 8px;
+                font-size: 0.75em;
+            }
+            
+            .status-display {
+                gap: 20px;
+                padding: 12px 15px;
+            }
+            
+            .status-icon-large {
+                font-size: 1.5em;
+            }
+            
+            .status-text-large {
+                font-size: 1em;
+            }
+            
+            .controls-grid {
+                grid-template-columns: 1fr;
+            }
+            
+            .controls-grid.single {
+                grid-template-columns: 1fr;
+            }
+            
+            button {
+                padding: 8px 12px;
+                font-size: 11px;
+            }
+        }
+        
+        /* Mobile Layout */
+        @media (max-width: 768px) {
+            .container {
+                padding: 5px;
+                gap: 10px;
+            }
+            
+            header {
+                padding: 10px 8px;
+                margin-bottom: 8px;
+            }
+            
+            h1 {
+                font-size: 1.3em;
+                letter-spacing: 1px;
+            }
+            
+            .subtitle {
+                font-size: 0.7em;
+                letter-spacing: 1px;
+            }
+            
+            .status-bar {
+                gap: 4px;
+                margin-top: 8px;
+            }
+            
+            .status-item {
+                min-width: 60px;
+                padding: 4px 6px;
+                font-size: 0.65em;
+                gap: 4px;
+            }
+            
+            .status-icon {
+                font-size: 0.9em;
+            }
+            
+            .status-label {
+                font-size: 0.6em;
+            }
+            
+            .status-value {
+                font-size: 0.9em;
+            }
+            
+            .video-section {
+                min-height: 300px;
+                border-width: 1px;
+            }
+            
+            .status-display {
+                gap: 15px;
+                padding: 10px;
+                flex-wrap: wrap;
+            }
+            
+            .status-display-item {
+                min-width: 100px;
+                gap: 8px;
+            }
+            
+            .status-icon-large {
+                font-size: 1.3em;
+            }
+            
+            .status-text-large {
+                font-size: 0.9em;
+                letter-spacing: 1px;
+            }
+            
+            .panel {
+                padding: 10px 12px;
+                margin-bottom: 10px;
+                border-width: 1px;
+            }
+            
+            .panel h3 {
+                font-size: 0.8em;
+                gap: 6px;
+                padding-bottom: 6px;
+            }
+            
+            .panel h3 .icon {
+                font-size: 1.1em;
+            }
+            
+            button {
+                padding: 8px 10px;
+                font-size: 10px;
+                min-height: 36px;
+                gap: 6px;
+            }
+            
+            .toggle-indicator {
+                width: 16px;
+                height: 16px;
+            }
+            
+            .toggle-indicator::before {
+                width: 8px;
+                height: 8px;
+            }
+            
+            select, input[type="range"] {
+                padding: 8px;
+                font-size: 12px;
+            }
+            
+            .logs {
+                max-height: 200px;
+                padding: 10px;
+            }
+            
+            .log-entry {
+                padding: 6px 8px;
+                font-size: 11px;
+            }
+            
+            .log-time {
+                min-width: 60px;
+                font-size: 10px;
+            }
+            
+            .connection-status {
+                padding: 10px;
+                font-size: 0.9em;
+                margin-bottom: 12px;
+            }
+        }
+        
+        /* Small Mobile Layout */
+        @media (max-width: 480px) {
+            .container {
+                padding: 3px;
+                gap: 8px;
+            }
+            
+            h1 {
+                font-size: 1.1em;
+                letter-spacing: 0.5px;
+            }
+            
+            .subtitle {
+                font-size: 0.6em;
+            }
+            
+            .status-bar {
+                gap: 3px;
+            }
+            
+            .status-item {
+                min-width: 50px;
+                padding: 3px 5px;
+                font-size: 0.6em;
+            }
+            
+            .status-icon {
+                font-size: 0.8em;
+            }
+            
+            .status-label {
+                display: none;
+            }
+            
+            .status-value {
+                font-size: 0.85em;
+            }
+            
+            .video-section {
+                min-height: 200px;
+            }
+            
+            .status-display {
+                gap: 10px;
+                padding: 8px;
+            }
+            
+            .status-display-item {
+                min-width: 80px;
+                flex-direction: column;
+                gap: 4px;
+            }
+            
+            .status-icon-large {
+                font-size: 1.1em;
+            }
+            
+            .status-text-large {
+                font-size: 0.75em;
+            }
+            
+            .panel {
+                padding: 8px 10px;
+                margin-bottom: 8px;
+            }
+            
+            .panel h3 {
+                font-size: 0.7em;
+            }
+            
+            button {
+                padding: 6px 8px;
+                font-size: 9px;
+                min-height: 32px;
+                flex-direction: column;
+                gap: 4px;
+            }
+            
+            .toggle-indicator {
+                width: 14px;
+                height: 14px;
+            }
+            
+            .logs {
+                max-height: 150px;
+                padding: 8px;
+            }
+            
+            .log-entry {
+                padding: 4px 6px;
+                font-size: 10px;
+            }
+            
+            .modal-content {
+                padding: 15px;
+            }
+            
+            .modal-content h2 {
+                font-size: 1.2em;
             }
         }
         
@@ -152,20 +423,20 @@
         .status-bar {
             display: flex;
             justify-content: center;
-            gap: 10px;
+            gap: 8px;
             flex-wrap: wrap;
-            margin-top: 10px;
+            margin-top: 12px;
         }
         
         .status-item {
             background: rgba(0, 0, 0, 0.85);
-            padding: 8px 12px;
+            padding: 8px 14px;
             border-radius: 0;
             border: 1px solid #00ff00;
             display: flex;
             align-items: center;
-            gap: 6px;
-            min-width: 100px;
+            gap: 8px;
+            min-width: 110px;
             justify-content: center;
             box-shadow: 0 0 10px rgba(0, 255, 0, 0.3);
             font-size: 0.85em;
@@ -174,6 +445,7 @@
         .status-item:hover {
             box-shadow: 0 0 20px rgba(0, 255, 0, 0.5);
             border-color: #00ffff;
+            transform: translateY(-2px);
         }
         
         .status-icon {
