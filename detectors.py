@@ -9,6 +9,10 @@ import threading
 from queue import Queue, Empty
 import shutil
 import gc
+import logging
+
+# Setup logging
+logger = logging.getLogger(__name__)
 
 from config import Config, Sensitivity
 
@@ -182,12 +186,17 @@ class PersonDetector:
     def _load_model(self):
         try:
             download_manager.start_download(self.model_name)
-            print(f"[Detector] Loading {self.model_name}...")
+            # Import logger here to avoid circular import
+            import logging
+            logger = logging.getLogger(__name__)
+            logger.info(f"[Detector] Loading {self.model_name}...")
             self.model = YOLO(self.model_name)
             self._loaded = True
-            print(f"[Detector] Loaded")
+            logger.info("[Detector] Loaded")
         except Exception as e:
-            print(f"[Detector] Error: {e}")
+            import logging
+            logger = logging.getLogger(__name__)
+            logger.error(f"[Detector] Error: {e}")
         finally:
             download_manager.end_download()
     
