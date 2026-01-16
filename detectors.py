@@ -534,6 +534,13 @@ class PersonDetector:
         top_persons = self._apply_nms(top_persons, iou_threshold=0.45, conf_threshold=0.5)
         bottom_persons = self._apply_nms(bottom_persons, iou_threshold=0.45, conf_threshold=0.5)
         
+        # Refine bounding boxes using skeleton keypoints for tighter fit
+        if self._mediapipe_available and MEDIAPIPE_AVAILABLE:
+            self._init_pose()
+            if self.pose:
+                top_persons = self._refine_bboxes_with_skeleton(frame_processed, top_persons, offset_y=0)
+                bottom_persons = self._refine_bboxes_with_skeleton(frame_processed, bottom_persons, offset_y=mid_y)
+        
         # Merge and assign track IDs
         all_persons = []
         track_id = 0
@@ -549,6 +556,112 @@ class PersonDetector:
             track_id += 1
         
         return all_persons
+    
+    def _refine_bboxes_with_skeleton(self, frame: np.ndarray, persons: List[PersonDetection], offset_y: int = 0) -> List[PersonDetection]:
+        """Refine bounding boxes using MediaPipe skeleton keypoints for tighter fit.
+        
+        Args:
+            frame: Full processed frame
+            persons: List of PersonDetection objects to refine
+            offset_y: Y offset for split frame detection
+            
+        Returns:
+            List of PersonDetection with refined bounding boxes
+        """
+        if not self.pose or not persons:
+            return persons
+        
+        refined_persons = []
+        
+        for person in persons:
+            x1, y1, x2, y2 = person.bbox
+            
+            # Crop person region for skeleton detection
+            pad_x = int((x2 - x1) * 0.2)
+            pad_y = int((y2 - y1) * 0.2)
+            
+            crop_x1 = max(0, x1 - pad_x)
+            crop_y1 = max(0, y1 - pad_y)
+            crop_x2 = min(frame.shape[1], x2 + pad_x)
+            crop_y2 = min(frame.shape[0], y2 + pad_y)
+            
+            person_crop = frame[crop_y1:crop_y2, crop_x1:crop_x2]
+            
+            if person_crop.size == 0:
+                refined_persons.append(person)
+                continue
+            
+            crop_h, crop_w = person_crop.shape[:2]
+            
+            try:
+                rgb = cv2.cvtColor(person_crop, cv2.COLOR_BGR2RGB)
+                pose_results = self.pose.process(rgb)
+                
+                if pose_results.pose_landmarks:
+                    # Collect relevant keypoints for bounding box refinement
+                    # Key points: nose (0), shoulders (11-12), elbows (13-14), wrists (15-16),
+                    #            hips (23-24), knees (25-26), ankles (27-28)
+                    relevant_indices = [0, 11, 12, 13, 14, 15, 16, 23, 24, 25, 26, 27, 28]
+                    
+                    keypoints_x = []
+                    keypoints_y = []
+                    
+                    for idx in relevant_indices:
+                        lm = pose_results.pose_landmarks.landmark[idx]
+                        
+                        # Only use high-visibility keypoints
+                        if lm.visibility > 0.5:
+                            # Transform coordinates back to full frame
+                            px = int(lm.x * crop_w) + crop_x1
+                            py = int(lm.y * crop_h) + crop_y1
+                            keypoints_x.append(px)
+                            keypoints_y.append(py)
+                    
+                    if len(keypoints_x) >= 4:  # Need at least 4 keypoints
+                        # Calculate new tight bounding box from keypoints
+                        new_x1 = min(keypoints_x)
+                        new_y1 = min(keypoints_y)
+                        new_x2 = max(keypoints_x)
+                        new_y2 = max(keypoints_y)
+                        
+                        # Apply small margin (5-10 pixels) for coverage
+                        margin = 8
+                        new_x1 = max(0, new_x1 - margin)
+                        new_y1 = max(0, new_y1 - margin)
+                        new_x2 = min(frame.shape[1], new_x2 + margin)
+                        new_y2 = min(frame.shape[0], new_y2 + margin)
+                        
+                        # Calculate new center and foot center
+                        new_cx = (new_x1 + new_x2) // 2
+                        new_cy = (new_y1 + new_y2) // 2
+                        new_foot_cx = (new_x1 + new_x2) // 2
+                        new_foot_cy = new_y2
+                        
+                        # Create refined detection
+                        refined_person = PersonDetection(
+                            center=(new_cx, new_cy),
+                            foot_center=(new_foot_cx, new_foot_cy),
+                            bbox=(new_x1, new_y1, new_x2, new_y2),
+                            confidence=person.confidence,
+                            track_id=person.track_id
+                        )
+                        
+                        # Copy skeleton landmarks for display if skeleton drawing is enabled
+                        if person.skeleton_landmarks:
+                            refined_person.skeleton_landmarks = person.skeleton_landmarks
+                        
+                        refined_persons.append(refined_person)
+                    else:
+                        # Not enough keypoints, keep original bbox
+                        refined_persons.append(person)
+                else:
+                    # No skeleton detected, keep original bbox
+                    refined_persons.append(person)
+            except Exception as e:
+                print(f"[Skeleton Refine] Error: {e}")
+                refined_persons.append(person)
+        
+        return refined_persons
     
     def detect(self, frame: np.ndarray, draw_skeleton: bool = False) -> Tuple[List[PersonDetection], np.ndarray]:
         if frame is None or not self._loaded:
