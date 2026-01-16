@@ -251,28 +251,58 @@
             z-index: 10;
         }
         
-        .video-overlay {
-            position: absolute;
-            bottom: 20px;
-            left: 50%;
-            transform: translateX(-50%);
+        .status-display {
+            grid-column: 1 / -1;
             background: rgba(0, 0, 0, 0.95);
-            padding: 15px 30px;
-            border-radius: 0;
             border: 2px solid #00ff00;
-            z-index: 20;
-            min-width: 300px;
+            border-radius: 0;
+            padding: 15px 20px;
+            margin-bottom: 15px;
             box-shadow: 0 0 20px rgba(0, 255, 0, 0.4);
             display: flex;
-            justify-content: space-around;
-            gap: 20px;
+            justify-content: center;
+            gap: 40px;
         }
         
-        .overlay-item {
+        .status-display:hover {
+            border-color: #00ffff;
+            box-shadow: 0 0 30px rgba(0, 255, 255, 0.6);
+        }
+        
+        .status-display-item {
             display: flex;
             align-items: center;
-            gap: 8px;
-            font-size: 1.1em;
+            gap: 12px;
+            min-width: 150px;
+        }
+        
+        .status-icon-large {
+            font-size: 2em;
+            text-shadow: 0 0 10px #00ff00;
+        }
+        
+        .status-text-large {
+            font-size: 1.2em;
+            font-weight: bold;
+            color: #00ff00;
+            text-transform: uppercase;
+            letter-spacing: 2px;
+            text-shadow: 0 0 10px #00ff00;
+        }
+        
+        .status-text-large.armed {
+            color: #00ff00;
+            text-shadow: 0 0 10px #00ff00;
+        }
+        
+        .status-text-large.disarmed {
+            color: #ff0000;
+            text-shadow: 0 0 10px #ff0000;
+        }
+        
+        .status-text-large.breach {
+            color: #ff0000;
+            animation: pulse 0.5s infinite;
         }
         
         /* Control Panels */
@@ -724,20 +754,21 @@
         <div class="video-section">
             <img id="video-feed" alt="Security Camera Feed" />
             <canvas id="video-canvas"></canvas>
-            
-            <div class="video-overlay">
-                <div class="overlay-item">
-                    <span>🔒</span>
-                    <span id="arm-status-text">Unknown</span>
-                </div>
-                <div class="overlay-item">
-                    <span>⚠️</span>
-                    <span id="breach-duration">0s</span>
-                </div>
-                <div class="overlay-item">
-                    <span>🎯</span>
-                    <span id="zone-count">0 zones</span>
-                </div>
+        </div>
+        
+        <!-- Status Display (OUTSIDE live preview) -->
+        <div class="status-display">
+            <div class="status-display-item">
+                <span class="status-icon-large">🔒</span>
+                <span class="status-text-large" id="arm-status-display">DISARMED</span>
+            </div>
+            <div class="status-display-item">
+                <span class="status-icon-large">⚠️</span>
+                <span class="status-text-large" id="breach-duration-display">0s</span>
+            </div>
+            <div class="status-display-item">
+                <span class="status-icon-large">🎯</span>
+                <span class="status-text-large" id="zone-count-display">0 zones</span>
             </div>
         </div>
         
@@ -1013,6 +1044,11 @@
             document.getElementById('arm-status-text').textContent = status.armed ? 'ARMED' : 'DISARMED';
             document.getElementById('arm-status-text').style.color = status.armed ? '#00ff00' : '#ff0000';
             
+            // Update status display outside live preview
+            const armDisplay = document.getElementById('arm-status-display');
+            armDisplay.textContent = status.armed ? 'ARMED' : 'DISARMED';
+            armDisplay.className = 'status-text-large ' + (status.armed ? 'armed' : 'disarmed');
+            
             // Recording status
             updateToggle('record', status.recording);
             document.getElementById('recording-status').textContent = status.recording ? 'On' : 'Off';
@@ -1026,6 +1062,18 @@
             document.getElementById('zone-status').className = status.breach_active ? 'status-value danger' : 'status-value';
             document.getElementById('breach-duration').textContent = `${status.breach_duration}s`;
             document.getElementById('breach-duration-stat').textContent = `${status.breach_duration}s`;
+            
+            // Update breach duration display
+            const breachDisplay = document.getElementById('breach-duration-display');
+            breachDisplay.textContent = `${status.breach_duration}s`;
+            if (status.breach_active) {
+                breachDisplay.className = 'status-text-large breach';
+            } else {
+                breachDisplay.className = 'status-text-large';
+            }
+            
+            // Update zone count display
+            document.getElementById('zone-count-display').textContent = `${status.zones} zones`;
             
             // Detection features
             updateToggle('skeleton', status.skeleton);
