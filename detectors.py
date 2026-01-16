@@ -423,11 +423,11 @@ class PersonDetector:
         top_persons = []
         bottom_persons = []
         
-        # Frigate-style filters (from objects.py FilterConfig):
-        min_area = 1000
-        max_area = 200000
-        min_ratio = 0.3  # Person aspect ratio (width/height)
-        max_ratio = 1.0
+        # Frigate-style filters (from objects.py FilterConfig)
+        min_area = 2000      # Increased minimum area (too small before)
+        max_area = 100000     # Decreased maximum area (full frame issue)
+        min_ratio = 0.3      # Person aspect ratio (width/height)
+        max_ratio = 1.5       # Increased max ratio (more flexible)
         
         # Detect in top camera (already enhanced by preprocessing)
         if top_frame_detect.size > 0:
@@ -453,8 +453,15 @@ class PersonDetector:
                         # Calculate area
                         area = (x2 - x1) * (y2 - y1)
                         
+                        # Additional filter: Reject bounding boxes that are too large (near full frame)
+                        top_area = top_frame.shape[0] * top_frame.shape[1]
+                        if area > top_area * 0.3:  # Reject if bbox > 30% of frame
+                            print(f"[Split-Top] Reject: area={area} too large (>{top_area * 0.3:.0f})")
+                            continue
+                        
                         # Frigate-style area filtering
                         if area < min_area or area > max_area:
+                            print(f"[Split-Top] Reject: area={area} out of range [{min_area}, {max_area}]")
                             continue
                         
                         # Calculate aspect ratio (width/height)
@@ -462,8 +469,9 @@ class PersonDetector:
                         height = y2 - y1
                         aspect_ratio = width / height if height > 0 else 0
                         
-                        # Frigate-style aspect ratio filtering (person: 0.3-1.0)
+                        # Frigate-style aspect ratio filtering (person: 0.3-1.5)
                         if aspect_ratio < min_ratio or aspect_ratio > max_ratio:
+                            print(f"[Split-Top] Reject: aspect_ratio={aspect_ratio:.2f} out of range [{min_ratio}, {max_ratio}]")
                             continue
                         
                         cx, cy = (x1 + x2) // 2, (y1 + y2) // 2
@@ -503,8 +511,15 @@ class PersonDetector:
                         # Calculate area
                         area = (x2 - x1) * (y2 - y1)
                         
+                        # Additional filter: Reject bounding boxes that are too large (near full frame)
+                        bottom_area = bottom_frame.shape[0] * bottom_frame.shape[1]
+                        if area > bottom_area * 0.3:  # Reject if bbox > 30% of frame
+                            print(f"[Split-Bottom] Reject: area={area} too large (>{bottom_area * 0.3:.0f})")
+                            continue
+                        
                         # Frigate-style area filtering
                         if area < min_area or area > max_area:
+                            print(f"[Split-Bottom] Reject: area={area} out of range [{min_area}, {max_area}]")
                             continue
                         
                         # Calculate aspect ratio (width/height)
@@ -512,8 +527,9 @@ class PersonDetector:
                         height = y2 - y1
                         aspect_ratio = width / height if height > 0 else 0
                         
-                        # Frigate-style aspect ratio filtering (person: 0.3-1.0)
+                        # Frigate-style aspect ratio filtering (person: 0.3-1.5)
                         if aspect_ratio < min_ratio or aspect_ratio > max_ratio:
+                            print(f"[Split-Bottom] Reject: aspect_ratio={aspect_ratio:.2f} out of range [{min_ratio}, {max_ratio}]")
                             continue
                         
                         cx, cy = (x1 + x2) // 2, (y1 + y2) // 2
