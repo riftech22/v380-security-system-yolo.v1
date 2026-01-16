@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Web Server untuk Security System - Robust Version for Ubuntu Server."""
+"""Web Server untuk Security System - Multi-threaded Version (Like Frigate)."""
 
 import asyncio
 import websockets
@@ -11,9 +11,9 @@ import time
 import threading
 import logging
 import sys
+import queue
 from typing import Set, Dict, Optional
-import os
-from pathlib import Path
+from collections import deque
 
 # Setup logging
 logging.basicConfig(
@@ -22,7 +22,7 @@ logging.basicConfig(
     handlers=[logging.StreamHandler()]
 )
 
-# Import security system modules with error handling
+# Import modules with error handling
 try:
     from config import Config, AlertType
     from detectors import PersonDetector, FaceRecognitionEngine, MotionDetector, DetectionThread
@@ -30,13 +30,185 @@ try:
     from utils import MultiZoneManager
     MODULES_AVAILABLE = True
 except ImportError as e:
-    logging.warning(f"[Import] Some modules not available: {e}")
-    logging.warning("[Import] Running in demo mode without detection features")
+    logging.warning(f"[Import] Running in demo mode: {e}")
     MODULES_AVAILABLE = False
 
 
+class FrameBuffer:
+    """Thread-safe frame buffer pool."""
+    
+    def __init__(self, max_size: int = 3):
+        self.buffer = deque(maxlen=max_size)
+        self.lock = threading.Lock()
+        self.max_size = max_size
+    
+    def put(self, frame: np.ndarray):
+        """Add frame to buffer (non-blocking)."""
+        with self.lock:
+            if len(self.buffer) >= self.max_size:
+                # Remove oldest frame
+                self.buffer.popleft()
+            self.buffer.append(frame.copy())
+    
+    def get(self) -> Optional[np.ndarray]:
+        """Get latest frame (non-blocking)."""
+        with self.lock:
+            if self.buffer:
+                return self.buffer[-1].copy()
+        return None
+    
+    def get_all(self) -> list:
+        """Get all frames from buffer."""
+        with self.lock:
+            return [frame.copy() for frame in self.buffer]
+    
+    def clear(self):
+        """Clear buffer."""
+        with self.lock:
+            self.buffer.clear()
+
+
+class CaptureThread:
+    """Separate thread for frame capture from camera."""
+    
+    def __init__(self, camera_source, buffer_size: int = 3):
+        self.camera_source = camera_source
+        self.frame_buffer = FrameBuffer(max_size=buffer_size)
+        self.running = False
+        self.cap = None
+        self.thread = None
+        self.fps = 0
+        self.frame_count = 0
+        self.last_time = time.time()
+    
+    def start(self):
+        """Start capture thread."""
+        self.running = True
+        self.thread = threading.Thread(target=self._capture_loop, daemon=True)
+        self.thread.start()
+        logging.info(f"[Capture] Thread started")
+    
+    def _capture_loop(self):
+        """Capture loop - runs continuously."""
+        try:
+            self.cap = cv2.VideoCapture(self.camera_source)
+            
+            if not self.cap.isOpened():
+                logging.error(f"[Capture] Failed to open camera: {self.camera_source}")
+                return
+            
+            # Optimize RTSP settings
+            self.cap.set(cv2.CAP_PROP_BUFFERSIZE, 3)  # Buffer size
+            self.cap.set(cv2.CAP_PROP_FRAME_WIDTH, 1280)
+            self.cap.set(cv2.CAP_PROP_FRAME_HEIGHT, 720)
+            self.cap.set(cv2.CAP_PROP_FPS, 30)
+            self.cap.set(cv2.CAP_PROP_FOURCC, cv2.VideoWriter_fourcc(*'MJPG'))
+            
+            logging.info(f"[Capture] Connected to camera: {self.camera_source}")
+            
+            while self.running:
+                try:
+                    ret, frame = self.cap.read()
+                    
+                    if ret and frame is not None and isinstance(frame, np.ndarray):
+                        # Force BGR conversion
+                        if len(frame.shape) == 2 or frame.shape[2] == 1:
+                            frame = cv2.cvtColor(frame, cv2.COLOR_GRAY2BGR)
+                        
+                        # Validate frame
+                        if frame.shape[0] > 0 and frame.shape[1] > 0:
+                            self.frame_buffer.put(frame)
+                            
+                            # Calculate FPS
+                            self.frame_count += 1
+                            elapsed = time.time() - self.last_time
+                            if elapsed >= 2.0:
+                                self.fps = self.frame_count / elapsed
+                                self.frame_count = 0
+                                self.last_time = time.time()
+                                logging.info(f"[Capture] FPS: {self.fps:.1f}, Buffer: {len(self.frame_buffer.buffer)}")
+                    else:
+                        logging.warning(f"[Capture] Failed to read frame")
+                        time.sleep(0.01)
+                
+                except Exception as e:
+                    logging.error(f"[Capture] Error: {e}")
+                    time.sleep(0.01)
+        
+        except Exception as e:
+            logging.error(f"[Capture] Fatal error: {e}")
+        finally:
+            if self.cap:
+                self.cap.release()
+    
+    def get_frame(self) -> Optional[np.ndarray]:
+        """Get latest frame (non-blocking)."""
+        return self.frame_buffer.get()
+    
+    def stop(self):
+        """Stop capture thread."""
+        self.running = False
+        if self.thread:
+            self.thread.join(timeout=2.0)
+        if self.cap:
+            self.cap.release()
+        logging.info("[Capture] Thread stopped")
+
+
+class ProcessingThread:
+    """Separate thread for detection and overlays."""
+    
+    def __init__(self, system):
+        self.system = system
+        self.running = False
+        self.thread = None
+        self.processed_frame = None
+        self.lock = threading.Lock()
+    
+    def start(self):
+        """Start processing thread."""
+        self.running = True
+        self.thread = threading.Thread(target=self._process_loop, daemon=True)
+        self.thread.start()
+        logging.info("[Processing] Thread started")
+    
+    def _process_loop(self):
+        """Processing loop - runs continuously."""
+        while self.running:
+            try:
+                frame = self.system.capture_thread.get_frame()
+                
+                if frame is not None:
+                    # Process frame with all features
+                    processed = self.system._process_frame_internal(frame)
+                    
+                    with self.lock:
+                        self.processed_frame = processed
+                
+                # Small sleep to prevent CPU overload
+                time.sleep(0.001)
+            
+            except Exception as e:
+                logging.error(f"[Processing] Error: {e}")
+                time.sleep(0.01)
+    
+    def get_processed_frame(self) -> Optional[np.ndarray]:
+        """Get processed frame (non-blocking)."""
+        with self.lock:
+            if self.processed_frame is not None:
+                return self.processed_frame.copy()
+        return None
+    
+    def stop(self):
+        """Stop processing thread."""
+        self.running = False
+        if self.thread:
+            self.thread.join(timeout=2.0)
+        logging.info("[Processing] Thread stopped")
+
+
 class SecurityWebSystem:
-    """Backend Security System untuk web interface."""
+    """Backend Security System dengan multi-threading."""
     
     def __init__(self):
         self.config = None
@@ -49,12 +221,13 @@ class SecurityWebSystem:
         self.motion_detector = None
         self.detection_thread = None
         
-        # Camera
-        self.cap = None
-        self.running = False
-        self.camera_available = False
+        # Multi-threading components
+        self.capture_thread = None
+        self.processing_thread = None
         
         # State
+        self.running = False
+        self.camera_available = False
         self.is_armed = False
         self.is_recording = False
         self.is_muted = False
@@ -75,21 +248,12 @@ class SecurityWebSystem:
         self.alert_count = 0
         self.breach_active = False
         self.breach_start_time = 0
-        self.trusted_detected = False
-        self.trusted_name = ""
         
-        # Frame
-        self.current_frame = None
-        self.frame_lock = threading.Lock()
-        self.last_frame_time = 0
-        self.consecutive_failures = 0
-        self.max_consecutive_failures = 30
+        # Demo mode
+        self.demo_mode = not MODULES_AVAILABLE
         
         # Video recording
         self.video_writer = None
-        
-        # Demo mode flag
-        self.demo_mode = not MODULES_AVAILABLE
         
         if not self.demo_mode:
             try:
@@ -97,50 +261,33 @@ class SecurityWebSystem:
                 self.db = DatabaseManager(self.config)
                 self.zone_manager = MultiZoneManager()
             except Exception as e:
-                logging.error(f"[Init] Error initializing modules: {e}")
+                logging.error(f"[Init] Error: {e}")
                 self.demo_mode = True
     
     def start_camera(self):
-        """Start camera."""
+        """Start camera dengan multi-threading."""
         logging.info("[Camera] Initializing...")
         
-        try:
-            # Coba koneksi ke camera source (RTSP atau USB)
-            camera_source = Config.CAMERA_SOURCE if self.config else 0
-            
-            self.cap = cv2.VideoCapture(camera_source)
-            
-            if self.cap.isOpened():
-                # Coba baca frame
-                self.cap.set(cv2.CAP_PROP_BUFFERSIZE, 1)
-                ret, frame = self.cap.read()
-                
-                if ret and frame is not None:
-                    logging.info(f"[Camera] Connected to camera: {camera_source}")
-                    # Set backend dan buffer size untuk RTSP
-                    self.cap.set(cv2.CAP_PROP_FRAME_WIDTH, 1280)
-                    self.cap.set(cv2.CAP_PROP_FRAME_HEIGHT, 720)
-                    self.cap.set(cv2.CAP_PROP_FPS, 30)
-                    self.cap.set(cv2.CAP_PROP_BUFFERSIZE, 1)
-                    self.cap.set(cv2.CAP_PROP_FOURCC, cv2.VideoWriter_fourcc(*'MJPG'))
-                    self.camera_available = True
-                    return True
-                else:
-                    self.cap.release()
-            else:
-                if self.cap:
-                    self.cap.release()
-        except Exception as e:
-            logging.warning(f"[Camera] Error: {e}")
+        camera_source = Config.CAMERA_SOURCE if self.config else 0
         
-        logging.warning("[Camera] Warning: No camera detected, using demo mode")
-        self.camera_available = False
-        return False
+        # Start capture thread
+        self.capture_thread = CaptureThread(camera_source, buffer_size=3)
+        self.capture_thread.start()
+        
+        # Wait for first frame
+        time.sleep(1.0)
+        
+        if self.capture_thread.get_frame() is not None:
+            self.camera_available = True
+            logging.info("[Camera] Connected successfully")
+        else:
+            logging.warning("[Camera] No frame detected, using demo mode")
+            self.camera_available = False
     
     def start_detection(self):
         """Start detection modules."""
         if self.demo_mode:
-            logging.info("[Detection] Demo mode - skipping detection modules")
+            logging.info("[Detection] Demo mode - skipping detection")
             return True
         
         logging.info("[Detection] Loading modules...")
@@ -160,90 +307,24 @@ class SecurityWebSystem:
             return True
         except Exception as e:
             logging.error(f"[Detection] Error: {e}")
-            logging.warning("[Detection] Running without detection features")
             return True  # Continue without detection
     
-    def capture_frame(self):
-        """Capture frame dengan RTSP fix untuk mengatasi stuck frame."""
-        if self.camera_available and self.cap and self.cap.isOpened():
-            try:
-                # Skip frames untuk RTSP buffer flush
-                for _ in range(2):
-                    self.cap.grab()
-                
-                # Baca frame
-                ret, frame = self.cap.read()
-                
-                if ret and frame is not None and isinstance(frame, np.ndarray):
-                    # Force convert ke BGR jika perlu
-                    if len(frame.shape) == 2 or frame.shape[2] == 1:
-                        frame = cv2.cvtColor(frame, cv2.COLOR_GRAY2BGR)
-                    
-                    # Cek jika frame valid
-                    if frame.shape[0] > 0 and frame.shape[1] > 0:
-                        # Store frame
-                        with self.frame_lock:
-                            self.current_frame = frame.copy()
-                        
-                        self.consecutive_failures = 0
-                        return frame
-                    else:
-                        logging.warning(f"[Capture] Invalid frame shape: {frame.shape}")
-                else:
-                    self.consecutive_failures += 1
-                    if self.consecutive_failures > self.max_consecutive_failures:
-                        logging.error(f"[Capture] Too many failures, using last frame")
-                        with self.frame_lock:
-                            if self.current_frame is not None:
-                                return self.current_frame.copy()
-                        return self.create_demo_frame()
-            except Exception as e:
-                logging.error(f"[Capture] Error: {e}")
-                self.consecutive_failures += 1
-        
-        # Use last frame or create demo frame
-        with self.frame_lock:
-            if self.current_frame is not None:
-                # Return frame baru dengan timestamp update untuk mencegah cache di browser
-                return self.current_frame.copy()
-        
-        # Create demo frame
-        return self.create_demo_frame()
+    def start_processing(self):
+        """Start processing thread."""
+        self.processing_thread = ProcessingThread(self)
+        self.processing_thread.start()
+        logging.info("[Processing] Thread started")
     
-    def create_demo_frame(self):
-        """Create demo frame for testing."""
-        frame = np.zeros((720, 1280, 3), dtype=np.uint8)
-        
-        # Add background
-        frame[:, :] = (30, 30, 40)
-        
-        # Add text
-        cv2.putText(frame, "RIFTECH CAM SECURITY", (340, 200), 
-                   cv2.FONT_HERSHEY_SIMPLEX, 1.2, (0, 255, 255), 3)
-        cv2.putText(frame, "Demo Mode - No Camera Detected", (320, 260),
-                   cv2.FONT_HERSHEY_SIMPLEX, 0.8, (0, 200, 200), 2)
-        
-        # Add animated elements
-        t = time.time()
-        x = int(640 + 200 * np.sin(t))
-        y = int(360 + 100 * np.cos(t))
-        cv2.circle(frame, (x, y), 20, (0, 255, 0), -1)
-        
-        cv2.putText(frame, f"Server Time: {time.strftime('%H:%M:%S')}", (400, 450),
-                   cv2.FONT_HERSHEY_SIMPLEX, 0.7, (255, 255, 255), 2)
-        
-        return frame
-    
-    def process_frame(self, frame: np.ndarray) -> np.ndarray:
-        """Process frame dengan detection dan overlays."""
+    def _process_frame_internal(self, frame: np.ndarray) -> np.ndarray:
+        """Internal frame processing dengan semua fitur."""
         if frame is None:
-            return self.create_demo_frame()
+            return self._create_demo_frame()
         
-        # Force ensure frame is BGR color format
+        # Ensure BGR format
         if len(frame.shape) == 2 or frame.shape[2] == 1:
             frame = cv2.cvtColor(frame, cv2.COLOR_GRAY2BGR)
         
-        # Resize untuk performance jika perlu
+        # Resize jika terlalu besar
         h, w = frame.shape[:2]
         if h > 720 or w > 1280:
             frame = cv2.resize(frame, (1280, 720))
@@ -270,10 +351,8 @@ class SecurityWebSystem:
         
         # Night vision
         if self.night_vision:
-            # Convert to grayscale then enhance green channel for night vision effect
             gray = cv2.cvtColor(output, cv2.COLOR_BGR2GRAY)
             output = cv2.cvtColor(gray, cv2.COLOR_GRAY2BGR)
-            # Enhance green channel
             output[:, :, 1] = np.clip(output[:, :, 1] * 1.3 + 30, 0, 255).astype(np.uint8)
         
         # Heat map
@@ -293,7 +372,7 @@ class SecurityWebSystem:
             for mx1, my1, mx2, my2 in motion_regions:
                 cv2.rectangle(output, (mx1, my1), (mx2, my2), (0, 165, 255), 1)
         
-        # Draw persons
+        # Draw persons dengan bounding boxes
         for person in persons:
             x1, y1, x2, y2 = person.bbox
             color = (0, 0, 255) if self.breach_active else (0, 255, 0)
@@ -322,28 +401,43 @@ class SecurityWebSystem:
         
         return output
     
+    def _create_demo_frame(self):
+        """Create demo frame."""
+        frame = np.zeros((720, 1280, 3), dtype=np.uint8)
+        frame[:, :] = (30, 30, 40)
+        
+        cv2.putText(frame, "RIFTECH CAM SECURITY", (340, 200), 
+                   cv2.FONT_HERSHEY_SIMPLEX, 1.2, (0, 255, 255), 3)
+        cv2.putText(frame, "Demo Mode - No Camera", (320, 260),
+                   cv2.FONT_HERSHEY_SIMPLEX, 0.8, (0, 200, 200), 2)
+        
+        t = time.time()
+        x = int(640 + 200 * np.sin(t))
+        y = int(360 + 100 * np.cos(t))
+        cv2.circle(frame, (x, y), 20, (0, 255, 0), -1)
+        
+        cv2.putText(frame, f"Server Time: {time.strftime('%H:%M:%S')}", (400, 450),
+                   cv2.FONT_HERSHEY_SIMPLEX, 0.7, (255, 255, 255), 2)
+        
+        return frame
+    
+    # Control methods
     def toggle_arm(self, armed: bool):
-        """Toggle arm/disarm."""
         self.is_armed = armed
         logging.info(f"[System] Armed: {armed}")
     
     def toggle_record(self, recording: bool):
-        """Toggle recording."""
         self.is_recording = recording
         logging.info(f"[Record] Recording: {recording}")
     
     def toggle_mute(self, muted: bool):
-        """Toggle mute."""
         self.is_muted = muted
         logging.info(f"[Audio] Muted: {muted}")
     
     def take_snapshot(self) -> str:
-        """Take snapshot."""
-        with self.frame_lock:
-            if self.current_frame is None:
-                frame = self.create_demo_frame()
-            else:
-                frame = self.current_frame.copy()
+        frame = self.processing_thread.get_processed_frame()
+        if frame is None:
+            frame = self._create_demo_frame()
         
         ts = time.strftime("%Y%m%d_%H%M%S")
         path = f"snapshots/snap_{ts}.jpg"
@@ -353,84 +447,66 @@ class SecurityWebSystem:
         except Exception as e:
             logging.error(f"[Snapshot] Error: {e}")
         
-        # Encode to base64
         _, buffer = cv2.imencode('.jpg', frame, [cv2.IMWRITE_JPEG_QUALITY, 95])
         return base64.b64encode(buffer).decode('utf-8')
     
     def set_confidence(self, conf: float):
-        """Set confidence level."""
         self.confidence = conf
         if self.person_detector:
             self.person_detector.set_confidence(conf)
-        logging.info(f"[Detection] Confidence: {conf}")
     
     def set_model(self, model_name: str):
-        """Set YOLO model."""
         self.model_name = model_name
         if self.person_detector:
             self.person_detector.change_model(model_name)
-        logging.info(f"[Detection] Model: {model_name}")
     
     def toggle_skeleton(self, enabled: bool):
-        """Toggle skeleton detection."""
         self.enable_skeleton = enabled
         if self.detection_thread:
             self.detection_thread.draw_skeleton = enabled
-        logging.info(f"[Detection] Skeleton: {enabled}")
     
     def reload_faces(self):
-        """Reload trusted faces."""
         if self.face_engine:
             self.face_engine.reload_faces()
-            logging.info(f"[Faces] Reloaded")
-        else:
-            logging.info("[Faces] Face engine not available in demo mode")
     
     def create_zone(self):
-        """Create new zone."""
         if self.zone_manager:
             self.zone_manager.create_zone()
-            logging.info(f"[Zone] Created: Total {self.zone_manager.get_zone_count()}")
-        else:
-            logging.info("[Zone] Zone manager not available in demo mode")
     
     def add_zone_point(self, x: int, y: int):
-        """Add point to active zone."""
         if self.zone_manager:
             zone = self.zone_manager.get_active_zone()
             if zone:
                 zone.add_point(x, y)
-                logging.info(f"[Zone] Point added: ({x}, {y})")
     
     def clear_zones(self):
-        """Clear all zones."""
         if self.zone_manager:
             self.zone_manager.delete_all_zones()
         self.breach_active = False
-        logging.info("[Zone] Cleared all zones")
     
     def stop(self):
         """Stop system."""
         self.running = False
-        if self.cap:
-            self.cap.release()
+        if self.capture_thread:
+            self.capture_thread.stop()
+        if self.processing_thread:
+            self.processing_thread.stop()
         if self.detection_thread:
             self.detection_thread.stop()
         if self.video_writer:
             self.video_writer.release()
-        logging.info("[System] Stopped")
 
 
 class SecurityWebServer:
-    """WebSocket server untuk web interface."""
+    """WebSocket server dengan non-blocking broadcast."""
     
     def __init__(self):
         self.system = SecurityWebSystem()
         self.clients: Set = set()
         self.running = False
-        
+        self.broadcast_queue = queue.Queue(maxsize=10)
+    
     async def handle_client(self, websocket):
-        """Handle WebSocket connection."""
         client_addr = websocket.remote_address
         logging.info(f"[WebSocket] Client connected: {client_addr}")
         self.clients.add(websocket)
@@ -441,7 +517,7 @@ class SecurityWebServer:
                     data = json.loads(message)
                     await self.handle_command(data, websocket)
                 except Exception as e:
-                    logging.error(f"[WebSocket] Error handling message: {e}")
+                    logging.error(f"[WebSocket] Error: {e}")
         except websockets.exceptions.ConnectionClosed:
             pass
         except Exception as e:
@@ -451,7 +527,6 @@ class SecurityWebServer:
             logging.info(f"[WebSocket] Client disconnected: {client_addr}")
     
     async def handle_command(self, data: Dict, websocket):
-        """Handle command dari client."""
         cmd_type = data.get('type')
         
         if cmd_type == 'get_status':
@@ -491,10 +566,10 @@ class SecurityWebServer:
         elif cmd_type == 'snapshot':
             snapshot = self.system.take_snapshot()
             if snapshot:
-                await websocket.send(json.dumps({
-                    'type': 'snapshot',
-                    'data': snapshot
-                }))
+                    await websocket.send(json.dumps({
+                        'type': 'snapshot',
+                        'data': snapshot
+                    }))
         
         elif cmd_type == 'set_confidence':
             self.system.set_confidence(data.get('value', 0.25))
@@ -507,19 +582,15 @@ class SecurityWebServer:
         
         elif cmd_type == 'toggle_face':
             self.system.enable_face = data.get('value', True)
-            logging.info(f"[Detection] Face: {self.system.enable_face}")
         
         elif cmd_type == 'toggle_motion':
             self.system.enable_motion = data.get('value', True)
-            logging.info(f"[Detection] Motion: {self.system.enable_motion}")
         
         elif cmd_type == 'toggle_heatmap':
             self.system.enable_heatmap = data.get('value', False)
-            logging.info(f"[Detection] Heatmap: {self.system.enable_heatmap}")
         
         elif cmd_type == 'toggle_night_vision':
             self.system.night_vision = data.get('value', False)
-            logging.info(f"[Display] Night Vision: {self.system.night_vision}")
         
         elif cmd_type == 'create_zone':
             self.system.create_zone()
@@ -549,91 +620,84 @@ class SecurityWebServer:
                 'zones': zones_data
             }))
     
-    async def broadcast_frame(self, processed_frame: np.ndarray):
-        """Broadcast frame ke semua clients dengan optimized encoding."""
-        try:
-            # Force ensure BGR format
-            if len(processed_frame.shape) == 2 or processed_frame.shape[2] == 1:
-                processed_frame = cv2.cvtColor(processed_frame, cv2.COLOR_GRAY2BGR)
+    async def broadcast_task(self):
+        """Non-blocking broadcast task."""
+        frame_count = 0
+        last_log_time = time.time()
+        target_fps = 15  # Realistic target for 14 FPS camera
+        frame_interval = 1.0 / target_fps
+        
+        while self.system.running:
+            try:
+                start_time = time.time()
+                
+                # Get processed frame from processing thread
+                frame = self.system.processing_thread.get_processed_frame()
+                
+                if frame is not None:
+                    # Ensure BGR format
+                    if len(frame.shape) == 2 or frame.shape[2] == 1:
+                        frame = cv2.cvtColor(frame, cv2.COLOR_GRAY2BGR)
+                    
+                    # Optimized encoding
+                    encode_params = [
+                        cv2.IMWRITE_JPEG_QUALITY, 70,  # Good quality/speed balance
+                        cv2.IMWRITE_JPEG_OPTIMIZE, 0,  # Skip optimization for speed
+                        cv2.IMWRITE_JPEG_PROGRESSIVE, 0  # Disable progressive
+                    ]
+                    
+                    _, buffer = cv2.imencode('.jpg', frame, encode_params)
+                    frame_b64 = base64.b64encode(buffer).decode('utf-8')
+                    
+                    message = json.dumps({
+                        'type': 'frame',
+                        'timestamp': time.time(),
+                        'data': frame_b64
+                    })
+                    
+                    # Non-blocking broadcast
+                    if self.clients:
+                        await asyncio.gather(
+                            *[client.send(message) for client in self.clients],
+                            return_exceptions=True
+                        )
+                    
+                    frame_count += 1
+                
+                # Log FPS every 2 seconds
+                if time.time() - last_log_time >= 2.0:
+                    actual_fps = frame_count / (time.time() - last_log_time)
+                    logging.info(f"[Broadcast] FPS: {actual_fps:.1f}, Clients: {len(self.clients)}")
+                    frame_count = 0
+                    last_log_time = time.time()
+                
+                # Calculate sleep time
+                elapsed = time.time() - start_time
+                sleep_time = max(0, frame_interval - elapsed)
+                await asyncio.sleep(sleep_time)
             
-            # Encode dengan lower quality untuk speed
-            encode_params = [
-                cv2.IMWRITE_JPEG_QUALITY, 65,  # Lower quality for speed
-                cv2.IMWRITE_JPEG_OPTIMIZE, 0,  # Skip optimization for speed
-                cv2.IMWRITE_JPEG_PROGRESSIVE, 0  # Disable progressive
-            ]
-            
-            _, buffer = cv2.imencode('.jpg', processed_frame, encode_params)
-            frame_b64 = base64.b64encode(buffer).decode('utf-8')
-            
-            message = json.dumps({
-                'type': 'frame',
-                'timestamp': time.time(),
-                'data': frame_b64
-            })
-            
-            if self.clients:
-                await asyncio.gather(
-                    *[client.send(message) for client in self.clients],
-                    return_exceptions=True
-                )
-        except Exception as e:
-            logging.error(f"[WebSocket] Broadcast error: {e}")
+            except Exception as e:
+                logging.error(f"[Broadcast] Error: {e}")
+                await asyncio.sleep(0.01)
     
     async def start(self):
-        """Start server."""
-        logging.info("[Server] Starting Security System...")
+        """Start server dengan multi-threading."""
+        logging.info("[Server] Starting Security System (Multi-threaded)...")
         
         try:
-            # Start camera (non-fatal if fails)
+            # Start capture thread
             self.system.start_camera()
             
-            # Start detection (non-fatal if fails)
+            # Start detection
             self.system.start_detection()
+            
+            # Start processing thread
+            self.system.start_processing()
             
             self.system.running = True
             
-            # Start frame capture loop dengan frame skipping
-            async def capture_loop():
-                frame_count = 0
-                last_log_time = time.time()
-                skip_counter = 0
-                target_fps = 25  # Reduced target for stability
-                frame_interval = 1.0 / target_fps
-                
-                while self.system.running:
-                    try:
-                        start_time = time.time()
-                        
-                        frame = self.system.capture_frame()
-                        if frame is not None:
-                            processed = self.system.process_frame(frame)
-                            await self.broadcast_frame(processed)
-                            frame_count += 1
-                        
-                        # Skip frames untuk maintain FPS
-                        skip_counter += 1
-                        if skip_counter >= 5:  # Skip 1 frame setiap 5 frames
-                            await asyncio.sleep(0.02)
-                            skip_counter = 0
-                        
-                        # Log every 2 seconds
-                        if time.time() - last_log_time >= 2.0:
-                            actual_fps = frame_count / (time.time() - last_log_time)
-                            logging.info(f"[Capture] FPS: {actual_fps:.1f}, Clients: {len(self.clients)}")
-                            frame_count = 0
-                            last_log_time = time.time()
-                        
-                        # Calculate sleep time to maintain target FPS
-                        elapsed = time.time() - start_time
-                        sleep_time = max(0, frame_interval - elapsed)
-                        await asyncio.sleep(sleep_time)
-                        
-                    except Exception as e:
-                        logging.error(f"[Capture] Error: {e}")
-                        await asyncio.sleep(0.1)
-            
-            asyncio.create_task(capture_loop())
+            # Start broadcast task
+            asyncio.create_task(self.broadcast_task())
             
             # Start WebSocket server
             async with websockets.serve(
@@ -645,10 +709,16 @@ class SecurityWebServer:
                 max_size=10 * 1024 * 1024
             ):
                 logging.info("[Server] WebSocket server started on ws://0.0.0.0:8765")
+                logging.info("[Server] Multi-threaded architecture:")
+                logging.info("  - Capture Thread: Continuous frame capture")
+                logging.info("  - Processing Thread: Detection & overlays")
+                logging.info("  - Broadcast Task: Non-blocking WebSocket")
+                
                 if self.system.demo_mode:
-                    logging.info("[Server] Running in DEMO MODE (no camera/detection)")
+                    logging.info("[Server] Running in DEMO MODE")
                 else:
                     logging.info("[Server] Running in NORMAL MODE")
+                
                 logging.info("[Server] Access web interface at: http://YOUR_SERVER_IP:8080/web.html")
                 
                 # Keep running
@@ -687,5 +757,5 @@ async def main():
 
 
 if __name__ == "__main__":
-    logging.info("Starting Security Web Server (Robust Mode)...")
+    logging.info("Starting Security Web Server (Multi-threaded)...")
     asyncio.run(main())
