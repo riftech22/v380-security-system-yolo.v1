@@ -328,11 +328,12 @@ class SecurityWebSystem:
         if len(frame.shape) == 2 or frame.shape[2] == 1:
             frame = cv2.cvtColor(frame, cv2.COLOR_GRAY2BGR)
         
-        # Resize jika terlalu besar
+        # Resize jika terlalu besar atau kecil
         h, w = frame.shape[:2]
-        if h > 720 or w > 1280:
-            frame = cv2.resize(frame, (1280, 720))
-            h, w = 720, 1280
+        if h > 720 or w > 1280 or h < 720 or w < 1280:
+            # Always ensure V380 standard resolution for split frame detection
+            frame = cv2.resize(frame, (1280, 720), interpolation=cv2.INTER_LINEAR)
+            h, w = 720, 1280  # Fix: (height, width) not (width, height)
         
         output = frame.copy()
         
