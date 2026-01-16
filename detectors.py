@@ -248,6 +248,78 @@ class PersonDetector:
     def set_confidence(self, conf: float):
         self.confidence = max(0.1, min(0.99, conf))
     
+    def detect_split_frame(self, frame, top_conf=0.25, bottom_conf=0.15):
+        """Detect persons in split frame (2 cameras).
+        
+        Args:
+            frame: Input frame (1280x720 with vertical split)
+            top_conf: Confidence threshold for top camera (default: 0.25)
+            bottom_conf: Confidence threshold for bottom camera (default: 0.15)
+            
+        Returns:
+            List of PersonDetection objects with adjusted coordinates
+        """
+        h, w = frame.shape[:2]
+        mid_y = h // 2
+        
+        # Split frame
+        top_frame = frame[:mid_y, :]
+        bottom_frame = frame[mid_y:, :]
+        
+        all_persons = []
+        track_id = 0
+        
+        # Detect in top camera
+        if top_frame.size > 0:
+            try:
+                with self._lock:
+                    results_top = self.model(top_frame, conf=top_conf, classes=[0], verbose=False)
+                
+                if results_top and results_top[0].boxes:
+                    for box in results_top[0].boxes:
+                        x1, y1, x2, y2 = map(int, box.xyxy[0].cpu().numpy())
+                        conf = float(box.conf[0])
+                        cx, cy = (x1 + x2) // 2, (y1 + y2) // 2
+                        
+                        person = PersonDetection(
+                            center=(cx, cy),
+                            foot_center=(cx, y2),
+                            bbox=(x1, y1, x2, y2),
+                            confidence=conf,
+                            track_id=track_id
+                        )
+                        all_persons.append(person)
+                        track_id += 1
+            except Exception as e:
+                print(f"[Split-Top] Error: {e}")
+        
+        # Detect in bottom camera
+        if bottom_frame.size > 0:
+            try:
+                with self._lock:
+                    results_bottom = self.model(bottom_frame, conf=bottom_conf, classes=[0], verbose=False)
+                
+                if results_bottom and results_bottom[0].boxes:
+                    for box in results_bottom[0].boxes:
+                        x1, y1, x2, y2 = map(int, box.xyxy[0].cpu().numpy())
+                        conf = float(box.conf[0])
+                        cx, cy = (x1 + x2) // 2, (y1 + y2) // 2
+                        
+                        # Adjust coordinates to full frame (bottom region: mid_y-h)
+                        person = PersonDetection(
+                            center=(cx, cy + mid_y),
+                            foot_center=(cx, y2 + mid_y),
+                            bbox=(x1, y1 + mid_y, x2, y2 + mid_y),
+                            confidence=conf,
+                            track_id=track_id
+                        )
+                        all_persons.append(person)
+                        track_id += 1
+            except Exception as e:
+                print(f"[Split-Bottom] Error: {e}")
+        
+        return all_persons
+    
     def detect(self, frame: np.ndarray, draw_skeleton: bool = False) -> Tuple[List[PersonDetection], np.ndarray]:
         if frame is None or not self._loaded:
             return [], frame if frame is not None else np.zeros((480, 640, 3), dtype=np.uint8)
@@ -258,6 +330,45 @@ class PersonDetector:
         persons = []
         output = frame.copy()
         h, w = frame.shape[:2]
+        
+        # Check if frame is split (1280x720 resolution)
+        if w == 1280 and h == 720:
+            try:
+                persons = self.detect_split_frame(frame)
+                
+                # Draw detections for split frame
+                for p in persons:
+                    x1, y1, x2, y2 = p.bbox
+                    
+                    # Draw bounding box
+                    cv2.rectangle(output, (x1, y1), (x2, y2), (0, 255, 0), 2)
+                    
+                    # Draw confidence label
+                    label = f"Person {p.confidence:.0%}"
+                    (tw, th), _ = cv2.getTextSize(label, cv2.FONT_HERSHEY_SIMPLEX, 0.5, 1)
+                    cv2.rectangle(output, (x1, y1 - th - 8), (x1 + tw + 4, y1), (0, 255, 0), -1)
+                    cv2.putText(output, label, (x1 + 2, y1 - 4), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 0, 0), 1)
+                    
+                    # Draw foot marker
+                    cv2.circle(output, p.foot_center, 5, (255, 0, 255), -1)
+                    
+                    # Draw professional skeleton if available
+                    if draw_skeleton and p.skeleton_landmarks:
+                        self._draw_professional_skeleton(output, p.skeleton_landmarks, p.bbox)
+                
+                # Run skeleton detection for each person if enabled
+                if self.draw_skeleton and MEDIAPIPE_AVAILABLE and persons:
+                    self._init_pose()
+                    if self.pose:
+                        for person in persons:
+                            skeleton = self._detect_skeleton_for_person(frame, person.bbox)
+                            if skeleton:
+                                person.skeleton_landmarks = skeleton
+                
+                return persons, output
+            except Exception as e:
+                print(f"[Detector] Split frame error: {e}")
+                persons = []
         
         # Run YOLO detection
         try:
