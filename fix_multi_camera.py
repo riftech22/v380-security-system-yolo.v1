@@ -51,19 +51,43 @@ def test_from_rtsp():
     
     rtsp_url = r"rtsp://admin:Kuncong203@10.26.27.196:554/live/ch00_0"
     
-    cap = cv2.VideoCapture(rtsp_url)
+    # Use FFmpeg backend for better H.265 support
+    cap = cv2.VideoCapture(rtsp_url, cv2.CAP_FFMPEG)
+    
+    # Set buffer size lower to avoid stale frames
+    cap.set(cv2.CAP_PROP_BUFFERSIZE, 1)
+    
+    # Set RTSP transport to TCP (more stable)
+    import os
+    os.environ["OPENCV_FFMPEG_CAPTURE_OPTIONS"] = "rtsp_transport;tcp"
     
     if not cap.isOpened():
         print("Gagal connect ke RTSP!")
         return
     
+    print("Connected to RTSP, waiting for valid frame...")
+    
+    # Skip first 30 frames to get past any codec issues
+    skip_frames = 30
+    frame_count = 0
+    
     ret, frame = cap.read()
+    
+    while not ret and frame_count < skip_frames:
+        frame_count += 1
+        ret, frame = cap.read()
+        if frame_count % 5 == 0:
+            print(f"Skipping frame {frame_count}/{skip_frames}...")
+        if not ret:
+            time.sleep(0.1)
+    
     if not ret:
-        print("Gagal membaca frame dari RTSP!")
+        print(f"Gagal membaca frame dari RTSP setelah {skip_frames} attempts!")
         return
     
     h, w = frame.shape[:2]
     print(f"RTSP Frame size: {w}x{h}")
+    print(f"Successfully captured frame after {frame_count} skips")
     print(f"Mid point: {w//2}x{h//2}")
     
     # Cek vertical split (paling umum untuk 2 camera)
