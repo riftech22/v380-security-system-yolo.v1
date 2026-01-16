@@ -274,6 +274,36 @@ class PersonDetector:
         
         return enhanced
     
+    def _letterbox_resize(self, frame: np.ndarray, target_size: int = 640) -> np.ndarray:
+        """Resize frame with letterboxing (maintain aspect ratio).
+        
+        Args:
+            frame: Input frame
+            target_size: Target size (square, e.g., 640x640)
+            
+        Returns:
+            Resized frame with letterboxing
+        """
+        h, w = frame.shape[:2]
+        
+        # Calculate scale factor to fit within target_size
+        scale = min(target_size / w, target_size / h)
+        
+        # Resize with aspect ratio maintained
+        new_w = int(w * scale)
+        new_h = int(h * scale)
+        resized = cv2.resize(frame, (new_w, new_h), interpolation=cv2.INTER_LINEAR)
+        
+        # Create letterbox (black padding)
+        letterbox = np.zeros((target_size, target_size, 3), dtype=np.uint8)
+        
+        # Center the resized frame
+        x_offset = (target_size - new_w) // 2
+        y_offset = (target_size - new_h) // 2
+        letterbox[y_offset:y_offset + new_h, x_offset:x_offset + new_w] = resized
+        
+        return letterbox
+    
     def _preprocess_frame(self, frame: np.ndarray, target_size: tuple = (1280, 720)) -> np.ndarray:
         """Preprocess frame for better detection.
         
@@ -403,22 +433,24 @@ class PersonDetector:
         Returns:
             List of PersonDetection objects with adjusted coordinates
         """
-        # Preprocess entire frame (resize + brightness + CLAHE)
-        frame_processed = self._preprocess_frame(frame)
+        # Step 1: Resize original frame to 1280x720 first
+        h, w = frame.shape[:2]
+        if (w, h) != (1280, 720):
+            frame = cv2.resize(frame, (1280, 720), interpolation=cv2.INTER_LINEAR)
         
-        h, w = frame_processed.shape[:2]
+        # Step 2: Crop frame BEFORE preprocessing (important!)
         mid_y = h // 2
+        top_frame_raw = frame[:mid_y, :]
+        bottom_frame_raw = frame[mid_y:, :]
         
-        # Split processed frame
-        top_frame = frame_processed[:mid_y, :]
-        bottom_frame = frame_processed[mid_y:, :]
+        # Step 3: Preprocess each crop separately
+        top_frame = self._preprocess_frame(top_frame_raw)
+        bottom_frame = self._preprocess_frame(bottom_frame_raw)
         
-        # Frigate-style: Resize to 320x320 for detection (from detector_config.py)
-        # Default input size for Frigate models
+        # Step 4: Resize with LETTERBOXING (maintain aspect ratio, don't stretch!)
         DETECTION_SIZE = 640
-        
-        top_frame_detect = cv2.resize(top_frame, (DETECTION_SIZE, DETECTION_SIZE), interpolation=cv2.INTER_LINEAR)
-        bottom_frame_detect = cv2.resize(bottom_frame, (DETECTION_SIZE, DETECTION_SIZE), interpolation=cv2.INTER_LINEAR)
+        top_frame_detect = self._letterbox_resize(top_frame, DETECTION_SIZE)
+        bottom_frame_detect = self._letterbox_resize(bottom_frame, DETECTION_SIZE)
         
         top_persons = []
         bottom_persons = []
@@ -440,15 +472,21 @@ class PersonDetector:
                         x1, y1, x2, y2 = map(int, box.xyxy[0].cpu().numpy())
                         conf = float(box.conf[0])
                         
-                        # Scale coordinates back to original frame size (320x320 -> top_frame size)
+                        # Scale coordinates back from letterbox (640x640 -> top_frame size)
                         top_h, top_w = top_frame.shape[:2]
-                        scale_x = top_w / DETECTION_SIZE
-                        scale_y = top_h / DETECTION_SIZE
                         
-                        x1 = int(x1 * scale_x)
-                        y1 = int(y1 * scale_y)
-                        x2 = int(x2 * scale_x)
-                        y2 = int(y2 * scale_y)
+                        # Calculate letterbox offsets
+                        scale = min(DETECTION_SIZE / top_w, DETECTION_SIZE / top_h)
+                        new_w = int(top_w * scale)
+                        new_h = int(top_h * scale)
+                        x_offset = (DETECTION_SIZE - new_w) // 2
+                        y_offset = (DETECTION_SIZE - new_h) // 2
+                        
+                        # Remove letterbox offset and scale back to original size
+                        x1 = int((x1 - x_offset) / scale)
+                        y1 = int((y1 - y_offset) / scale)
+                        x2 = int((x2 - x_offset) / scale)
+                        y2 = int((y2 - y_offset) / scale)
                         
                         # Calculate area
                         area = (x2 - x1) * (y2 - y1)
@@ -498,15 +536,21 @@ class PersonDetector:
                         x1, y1, x2, y2 = map(int, box.xyxy[0].cpu().numpy())
                         conf = float(box.conf[0])
                         
-                        # Scale coordinates back to original frame size (320x320 -> bottom_frame size)
+                        # Scale coordinates back from letterbox (640x640 -> bottom_frame size)
                         bottom_h, bottom_w = bottom_frame.shape[:2]
-                        scale_x = bottom_w / DETECTION_SIZE
-                        scale_y = bottom_h / DETECTION_SIZE
                         
-                        x1 = int(x1 * scale_x)
-                        y1 = int(y1 * scale_y)
-                        x2 = int(x2 * scale_x)
-                        y2 = int(y2 * scale_y)
+                        # Calculate letterbox offsets
+                        scale = min(DETECTION_SIZE / bottom_w, DETECTION_SIZE / bottom_h)
+                        new_w = int(bottom_w * scale)
+                        new_h = int(bottom_h * scale)
+                        x_offset = (DETECTION_SIZE - new_w) // 2
+                        y_offset = (DETECTION_SIZE - new_h) // 2
+                        
+                        # Remove letterbox offset and scale back to original size
+                        x1 = int((x1 - x_offset) / scale)
+                        y1 = int((y1 - y_offset) / scale)
+                        x2 = int((x2 - x_offset) / scale)
+                        y2 = int((y2 - y_offset) / scale)
                         
                         # Calculate area
                         area = (x2 - x1) * (y2 - y1)
@@ -554,8 +598,9 @@ class PersonDetector:
         if self._mediapipe_available and MEDIAPIPE_AVAILABLE:
             self._init_pose()
             if self.pose:
-                top_persons = self._refine_bboxes_with_skeleton(frame_processed, top_persons, offset_y=0)
-                bottom_persons = self._refine_bboxes_with_skeleton(frame_processed, bottom_persons, offset_y=mid_y)
+                # Use preprocessed frames for skeleton refinement
+                top_persons = self._refine_bboxes_with_skeleton(top_frame, top_persons, offset_y=0)
+                bottom_persons = self._refine_bboxes_with_skeleton(bottom_frame, bottom_persons, offset_y=mid_y)
         
         # Merge and assign track IDs
         all_persons = []
