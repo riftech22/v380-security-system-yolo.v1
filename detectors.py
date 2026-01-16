@@ -274,26 +274,63 @@ class PersonDetector:
         
         return enhanced
     
-    def detect_split_frame(self, frame, top_conf=0.25, bottom_conf=0.15):
-        """Detect persons in split frame (2 cameras) with Frigate-style filtering.
+    def _preprocess_frame(self, frame: np.ndarray, target_size: tuple = (1280, 720)) -> np.ndarray:
+        """Preprocess frame for better detection.
         
         Args:
-            frame: Input frame (1280x720 with vertical split)
+            frame: Input frame (can be any resolution)
+            target_size: Target resolution (default: 1280x720)
+            
+        Returns:
+            Preprocessed frame at target_size
+        """
+        # Step 1: Resize to target resolution
+        h, w = frame.shape[:2]
+        if (w, h) != target_size:
+            frame = cv2.resize(frame, target_size, interpolation=cv2.INTER_LINEAR)
+        
+        # Step 2: Calculate brightness statistics
+        brightness = np.mean(frame)
+        std_dev = np.std(frame)
+        
+        # Step 3: Brightness adjustment
+        if brightness > 120:  # Overexposed
+            # Darken frame
+            frame = cv2.convertScaleAbs(frame, alpha=0.7, beta=-30)
+        elif brightness < 50:  # Underexposed
+            # Brighten frame
+            frame = cv2.convertScaleAbs(frame, alpha=1.3, beta=30)
+        
+        # Step 4: CLAHE for better contrast
+        lab = cv2.cvtColor(frame, cv2.COLOR_BGR2LAB)
+        l, a, b = cv2.split(lab)
+        clahe = cv2.createCLAHE(clipLimit=2.0, tileGridSize=(8, 8))
+        l = clahe.apply(l)
+        frame = cv2.merge([l, a, b])
+        frame = cv2.cvtColor(frame, cv2.COLOR_LAB2BGR)
+        
+        return frame
+    
+    def detect_split_frame(self, frame, top_conf=0.25, bottom_conf=0.15):
+        """Detect persons in split frame (2 cameras) with preprocessing.
+        
+        Args:
+            frame: Input frame (can be any resolution, will be resized to 1280x720)
             top_conf: Confidence threshold for top camera (default: 0.25)
             bottom_conf: Confidence threshold for bottom camera (default: 0.15)
             
         Returns:
             List of PersonDetection objects with adjusted coordinates
         """
-        h, w = frame.shape[:2]
+        # Preprocess entire frame (resize + brightness + CLAHE)
+        frame_processed = self._preprocess_frame(frame)
+        
+        h, w = frame_processed.shape[:2]
         mid_y = h // 2
         
-        # Split frame
-        top_frame = frame[:mid_y, :]
-        bottom_frame = frame[mid_y:, :]
-        
-        # Enhance bottom camera (darker area typically)
-        bottom_frame_enhanced = self._enhance_frame(bottom_frame)
+        # Split processed frame
+        top_frame = frame_processed[:mid_y, :]
+        bottom_frame = frame_processed[mid_y:, :]
         
         all_persons = []
         track_id = 0
@@ -302,7 +339,7 @@ class PersonDetector:
         min_area = 500
         max_area = 100000
         
-        # Detect in top camera
+        # Detect in top camera (already enhanced by preprocessing)
         if top_frame.size > 0:
             try:
                 with self._lock:
@@ -332,11 +369,11 @@ class PersonDetector:
             except Exception as e:
                 print(f"[Split-Top] Error: {e}")
         
-        # Detect in bottom camera with enhanced frame
-        if bottom_frame_enhanced.size > 0:
+        # Detect in bottom camera (already enhanced by preprocessing)
+        if bottom_frame.size > 0:
             try:
                 with self._lock:
-                    results_bottom = self.model(bottom_frame_enhanced, conf=bottom_conf, classes=[0], verbose=False)
+                    results_bottom = self.model(bottom_frame, conf=bottom_conf, classes=[0], verbose=False)
                 
                 if results_bottom and results_bottom[0].boxes:
                     for box in results_bottom[0].boxes:
