@@ -311,8 +311,82 @@ class PersonDetector:
         
         return frame
     
+    def _apply_nms(self, detections, iou_threshold=0.5):
+        """Apply Non-Maximum Suppression to filter overlapping detections.
+        
+        Args:
+            detections: List of PersonDetection objects
+            iou_threshold: IoU threshold for suppression
+            
+        Returns:
+            Filtered detections
+        """
+        if len(detections) <= 1:
+            return detections
+        
+        # Sort by confidence (highest first)
+        detections = sorted(detections, key=lambda x: x.confidence, reverse=True)
+        
+        # Initialize list to keep
+        keep = []
+        
+        while detections:
+            # Pick detection with highest confidence
+            current = detections[0]
+            keep.append(current)
+            detections.pop(0)
+            
+            # Calculate IoU with remaining detections
+            remaining = []
+            for det in detections:
+                iou = self._calculate_iou(current.bbox, det.bbox)
+                
+                # Keep only if IoU is below threshold (not overlapping)
+                if iou < iou_threshold:
+                    remaining.append(det)
+            
+            detections = remaining
+        
+        return keep
+    
+    def _calculate_iou(self, bbox1, bbox2):
+        """Calculate Intersection over Union (IoU) for two bounding boxes.
+        
+        Args:
+            bbox1: (x1, y1, x2, y2)
+            bbox2: (x1, y1, x2, y2)
+            
+        Returns:
+            IoU value (0-1)
+        """
+        x1_1, y1_1, x2_1, y2_1 = bbox1
+        x1_2, y1_2, x2_2, y2_2 = bbox2
+        
+        # Calculate intersection
+        inter_x1 = max(x1_1, x1_2)
+        inter_y1 = max(y1_1, y1_2)
+        inter_x2 = min(x2_1, x2_2)
+        inter_y2 = min(y2_1, y2_2)
+        
+        # Check if there's overlap
+        if inter_x2 > inter_x1 and inter_y2 > inter_y1:
+            inter_area = (inter_x2 - inter_x1) * (inter_y2 - inter_y1)
+        else:
+            inter_area = 0
+        
+        # Calculate union
+        area1 = (x2_1 - x1_1) * (y2_1 - y1_1)
+        area2 = (x2_2 - x1_2) * (y2_2 - y1_2)
+        union_area = area1 + area2 - inter_area
+        
+        # Calculate IoU
+        if union_area > 0:
+            return inter_area / union_area
+        else:
+            return 0.0
+    
     def detect_split_frame(self, frame, top_conf=0.25, bottom_conf=0.15):
-        """Detect persons in split frame (2 cameras) with preprocessing.
+        """Detect persons in split frame (2 cameras) with preprocessing and NMS.
         
         Args:
             frame: Input frame (can be any resolution, will be resized to 1280x720)
@@ -332,8 +406,8 @@ class PersonDetector:
         top_frame = frame_processed[:mid_y, :]
         bottom_frame = frame_processed[mid_y:, :]
         
-        all_persons = []
-        track_id = 0
+        top_persons = []
+        bottom_persons = []
         
         # Frigate-style area filters (min_area: 500, max_area: 100000)
         min_area = 500
@@ -362,10 +436,9 @@ class PersonDetector:
                             foot_center=(cx, y2),
                             bbox=(x1, y1, x2, y2),
                             confidence=conf,
-                            track_id=track_id
+                            track_id=-1
                         )
-                        all_persons.append(person)
-                        track_id += 1
+                        top_persons.append(person)
             except Exception as e:
                 print(f"[Split-Top] Error: {e}")
         
@@ -385,18 +458,37 @@ class PersonDetector:
                         if area < min_area or area > max_area:
                             continue
                         
+                        cx, cy = (x1 + x2) // 2, (y1 + y2) // 2
+                        
                         # Adjust coordinates to full frame (bottom region: mid_y-h)
                         person = PersonDetection(
                             center=(cx, cy + mid_y),
                             foot_center=(cx, y2 + mid_y),
                             bbox=(x1, y1 + mid_y, x2, y2 + mid_y),
                             confidence=conf,
-                            track_id=track_id
+                            track_id=-1
                         )
-                        all_persons.append(person)
-                        track_id += 1
+                        bottom_persons.append(person)
             except Exception as e:
                 print(f"[Split-Bottom] Error: {e}")
+        
+        # Apply NMS separately to top and bottom regions
+        top_persons = self._apply_nms(top_persons, iou_threshold=0.5)
+        bottom_persons = self._apply_nms(bottom_persons, iou_threshold=0.5)
+        
+        # Merge and assign track IDs
+        all_persons = []
+        track_id = 0
+        
+        for person in top_persons:
+            person.track_id = track_id
+            all_persons.append(person)
+            track_id += 1
+        
+        for person in bottom_persons:
+            person.track_id = track_id
+            all_persons.append(person)
+            track_id += 1
         
         return all_persons
     
