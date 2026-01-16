@@ -311,16 +311,23 @@ class PersonDetector:
         
         return frame
     
-    def _apply_nms(self, detections, iou_threshold=0.5):
-        """Apply Non-Maximum Suppression to filter overlapping detections.
+    def _apply_nms(self, detections, iou_threshold=0.45, conf_threshold=0.5):
+        """Apply Non-Maximum Suppression with Frigate-style parameters.
         
         Args:
             detections: List of PersonDetection objects
-            iou_threshold: IoU threshold for suppression
+            iou_threshold: IoU threshold for suppression (Frigate: 0.45)
+            conf_threshold: Confidence threshold (Frigate: 0.5)
             
         Returns:
             Filtered detections
         """
+        if len(detections) <= 1:
+            return detections
+        
+        # Filter by confidence threshold first (Frigate min_score: 0.5)
+        detections = [d for d in detections if d.confidence >= conf_threshold]
+        
         if len(detections) <= 1:
             return detections
         
@@ -341,7 +348,7 @@ class PersonDetector:
             for det in detections:
                 iou = self._calculate_iou(current.bbox, det.bbox)
                 
-                # Keep only if IoU is below threshold (not overlapping)
+                # Keep only if IoU is below threshold (Frigate: 0.45)
                 if iou < iou_threshold:
                     remaining.append(det)
             
@@ -385,13 +392,13 @@ class PersonDetector:
         else:
             return 0.0
     
-    def detect_split_frame(self, frame, top_conf=0.25, bottom_conf=0.15):
-        """Detect persons in split frame (2 cameras) with preprocessing and NMS.
+    def detect_split_frame(self, frame, top_conf=0.4, bottom_conf=0.4):
+        """Detect persons in split frame (2 cameras) with Frigate-style techniques.
         
         Args:
             frame: Input frame (can be any resolution, will be resized to 1280x720)
-            top_conf: Confidence threshold for top camera (default: 0.25)
-            bottom_conf: Confidence threshold for bottom camera (default: 0.15)
+            top_conf: Confidence threshold for top camera (Frigate: 0.4)
+            bottom_conf: Confidence threshold for bottom camera (Frigate: 0.4)
             
         Returns:
             List of PersonDetection objects with adjusted coordinates
@@ -409,9 +416,11 @@ class PersonDetector:
         top_persons = []
         bottom_persons = []
         
-        # Frigate-style area filters (min_area: 500, max_area: 100000)
-        min_area = 500
-        max_area = 100000
+        # Frigate-style filters (from objects.py FilterConfig):
+        min_area = 1000
+        max_area = 200000
+        min_ratio = 0.3  # Person aspect ratio (width/height)
+        max_ratio = 1.0
         
         # Detect in top camera (already enhanced by preprocessing)
         if top_frame.size > 0:
@@ -424,9 +433,20 @@ class PersonDetector:
                         x1, y1, x2, y2 = map(int, box.xyxy[0].cpu().numpy())
                         conf = float(box.conf[0])
                         
-                        # Frigate-style area filtering
+                        # Calculate area
                         area = (x2 - x1) * (y2 - y1)
+                        
+                        # Frigate-style area filtering
                         if area < min_area or area > max_area:
+                            continue
+                        
+                        # Calculate aspect ratio (width/height)
+                        width = x2 - x1
+                        height = y2 - y1
+                        aspect_ratio = width / height if height > 0 else 0
+                        
+                        # Frigate-style aspect ratio filtering (person: 0.3-1.0)
+                        if aspect_ratio < min_ratio or aspect_ratio > max_ratio:
                             continue
                         
                         cx, cy = (x1 + x2) // 2, (y1 + y2) // 2
@@ -453,9 +473,20 @@ class PersonDetector:
                         x1, y1, x2, y2 = map(int, box.xyxy[0].cpu().numpy())
                         conf = float(box.conf[0])
                         
-                        # Frigate-style area filtering
+                        # Calculate area
                         area = (x2 - x1) * (y2 - y1)
+                        
+                        # Frigate-style area filtering
                         if area < min_area or area > max_area:
+                            continue
+                        
+                        # Calculate aspect ratio (width/height)
+                        width = x2 - x1
+                        height = y2 - y1
+                        aspect_ratio = width / height if height > 0 else 0
+                        
+                        # Frigate-style aspect ratio filtering (person: 0.3-1.0)
+                        if aspect_ratio < min_ratio or aspect_ratio > max_ratio:
                             continue
                         
                         cx, cy = (x1 + x2) // 2, (y1 + y2) // 2
@@ -472,9 +503,9 @@ class PersonDetector:
             except Exception as e:
                 print(f"[Split-Bottom] Error: {e}")
         
-        # Apply NMS separately to top and bottom regions
-        top_persons = self._apply_nms(top_persons, iou_threshold=0.5)
-        bottom_persons = self._apply_nms(bottom_persons, iou_threshold=0.5)
+        # Apply Frigate-style NMS (IoU=0.45, conf=0.5)
+        top_persons = self._apply_nms(top_persons, iou_threshold=0.45, conf_threshold=0.5)
+        bottom_persons = self._apply_nms(bottom_persons, iou_threshold=0.45, conf_threshold=0.5)
         
         # Merge and assign track IDs
         all_persons = []
