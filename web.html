@@ -515,14 +515,36 @@
             background: #000;
         }
         
-        #video-canvas {
+        #zone-canvas-top {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 50%;
+            cursor: crosshair;
+            z-index: 20;
+            pointer-events: auto;
+        }
+        
+        #zone-canvas-bottom {
+            position: absolute;
+            bottom: 0;
+            left: 0;
+            width: 100%;
+            height: 50%;
+            cursor: crosshair;
+            z-index: 20;
+            pointer-events: auto;
+        }
+        
+        #overlay-canvas {
             position: absolute;
             top: 0;
             left: 0;
             width: 100%;
             height: 100%;
-            cursor: crosshair;
-            z-index: 10;
+            z-index: 30;
+            pointer-events: none;
         }
         
         .status-display {
@@ -1613,6 +1635,12 @@
             updateToggle('arm', status.armed);
             document.getElementById('arm-status-text').textContent = status.armed ? 'ARMED' : 'DISARMED';
             document.getElementById('arm-status-text').style.color = status.armed ? '#00ff00' : '#ff0000';
+            
+            // Recording status
+            savedState.recording = status.recording;
+            updateToggle('record', status.recording);
+            document.getElementById('recording-status').textContent = status.recording ? 'On' : 'Off';
+            document.getElementById('recording-status').className = status.recording ? 'status-value danger' : 'status-value';
             
             // Update status display outside live preview
             const armDisplay = document.getElementById('arm-status-display');
