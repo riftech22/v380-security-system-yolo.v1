@@ -332,6 +332,11 @@
                 height: 14px;
             }
             
+            .toggle-indicator::before {
+                width: 8px;
+                height: 8px;
+            }
+            
             .logs {
                 max-height: 150px;
                 padding: 8px;
@@ -1164,7 +1169,7 @@
                     <span>Zones: <span id="zones-count-panel">0</span> | Points: <span id="zone-points-count">0</span></span>
                 </div>
                 <p style="margin: 10px 0; color: #00ffff; font-size: 0.8em; text-transform: uppercase; letter-spacing: 1px;">
-                    [INFO] Click on video feed to add zone points. Minimum 3 points required.
+                    [INFO] Top canvas (0-50% height) untuk kamera atas. Bottom canvas (50-100% height) untuk kamera bawah.
                 </p>
                 <button class="danger" onclick="clearZones()">
                     🗑️ CLEAR ALL ZONES
@@ -1319,14 +1324,14 @@
                         zoneCanvasTop.width = video.naturalWidth;
                         zoneCanvasTop.height = topCanvasHeight;
                         
-                        // Bottom canvas: full width, half height, shifted
+                        // Bottom canvas: full width, half height
                         zoneCanvasBottom.width = video.naturalWidth;
                         zoneCanvasBottom.height = bottomCanvasHeight;
                         
                         console.log(`[Canvas] Split frame detected: ${video.naturalWidth}x${video.naturalHeight}`);
-                        console.log(`[Canvas] Top canvas: ${zoneCanvasTop.width}x${zoneCanvasTop.height}`);
-                        console.log(`[Canvas] Bottom canvas: ${zoneCanvasBottom.width}x${zoneCanvasBottom.height}`);
-                        addLog(`Split frame detected: Top ${zoneCanvasTop.width}x${zoneCanvasTop.height}, Bottom ${zoneCanvasBottom.width}x${zoneCanvasBottom.height}`, 'info');
+                        console.log(`[Canvas] Top canvas: ${zoneCanvasTop.width}x${zoneCanvasTop.height} (top split)`);
+                        console.log(`[Canvas] Bottom canvas: ${zoneCanvasBottom.width}x${zoneCanvasBottom.height} (bottom split)`);
+                        addLog(`Split frame: Top ${zoneCanvasTop.width}x${zoneCanvasTop.height}, Bottom ${zoneCanvasBottom.width}x${zoneCanvasBottom.height}`, 'info');
                     } else {
                         // Single camera: full canvas
                         zoneCanvasTop.width = video.naturalWidth;
@@ -1350,7 +1355,7 @@
                 }
             };
             
-            // Add click event to zone canvases (only top canvas clickable)
+            // Add click event to both zone canvases
             zoneCanvasTop.addEventListener('click', (e) => {
                 if (isDrawing) {
                     addZonePoint(e, 'top');
@@ -1509,36 +1514,46 @@
             
             // Draw current drawing zone (if any)
             if (zonePoints.length > 0) {
-                // Draw on top canvas
-                ctxTop.beginPath();
-                ctxTop.moveTo(zonePoints[0].x, zonePoints[0].y);
+                // Determine which canvas based on zone points
+                const zoneCenterY = zonePoints.reduce((sum, p) => sum + p.y, 0) / zonePoints.length;
+                const isTopZone = isSplitFrame && zoneCenterY < splitY;
+                
+                const canvas = isTopZone ? zoneCanvasTop : zoneCanvasBottom;
+                const ctx = isTopZone ? ctxTop : ctxBottom;
+                
+                // Apply offset for bottom split
+                const offsetY = isSplitFrame && !isTopZone ? -splitY : 0;
+                
+                // Draw on canvas
+                ctx.beginPath();
+                ctx.moveTo(zonePoints[0].x, zonePoints[0].y + offsetY);
                 
                 for (let i = 1; i < zonePoints.length; i++) {
-                    ctxTop.lineTo(zonePoints[i].x, zonePoints[i].y);
+                    ctx.lineTo(zonePoints[i].x, zonePoints[i].y + offsetY);
                 }
                 
                 if (zonePoints.length >= 3) {
-                    ctxTop.closePath();
-                    ctxTop.fillStyle = 'rgba(255, 255, 0, 0.15)';
-                    ctxTop.fill();
+                    ctx.closePath();
+                    ctx.fillStyle = 'rgba(255, 255, 0, 0.15)';
+                    ctx.fill();
                 }
                 
-                ctxTop.strokeStyle = '#ffff00';
-                ctxTop.lineWidth = 3;
-                ctxTop.stroke();
+                ctx.strokeStyle = '#ffff00';
+                ctx.lineWidth = 3;
+                ctx.stroke();
                 
                 // Draw points
                 zonePoints.forEach(point => {
-                    ctxTop.beginPath();
-                    ctxTop.arc(point.x, point.y, 10, 0, 2 * Math.PI);
-                    ctxTop.fillStyle = '#ffff00';
-                    ctxTop.fill();
-                    ctxTop.strokeStyle = '#ffffff';
-                    ctxTop.lineWidth = 2;
-                    ctxTop.stroke();
+                    ctx.beginPath();
+                    ctx.arc(point.x, point.y + offsetY, 10, 0, 2 * Math.PI);
+                    ctx.fillStyle = '#ffff00';
+                    ctx.fill();
+                    ctx.strokeStyle = '#ffffff';
+                    ctx.lineWidth = 2;
+                    ctx.stroke();
                 });
                 
-                console.log(`[Zone] Drawing ${zonePoints.length} points on top canvas`);
+                console.log(`[Zone] Drawing ${zonePoints.length} points on ${isTopZone ? 'TOP' : 'BOTTOM'} canvas`);
             }
         }
         
@@ -1574,8 +1589,8 @@
                         zoneCanvasBottom.height = bottomCanvasHeight;
                         
                         console.log(`[Canvas] Split frame: ${tempImg.width}x${tempImg.height}`);
-                        console.log(`[Canvas] Top: ${zoneCanvasTop.width}x${zoneCanvasTop.height}`);
-                        console.log(`[Canvas] Bottom: ${zoneCanvasBottom.width}x${zoneCanvasBottom.height}`);
+                        console.log(`[Canvas] Top: ${zoneCanvasTop.width}x${zoneCanvasTop.height} (top split)`);
+                        console.log(`[Canvas] Bottom: ${zoneCanvasBottom.width}x${zoneCanvasBottom.height} (bottom split)`);
                         addLog(`Split frame: Top ${zoneCanvasTop.width}x${zoneCanvasTop.height}, Bottom ${zoneCanvasBottom.width}x${zoneCanvasBottom.height}`, 'info');
                     } else {
                         // Single camera
@@ -1915,30 +1930,67 @@
         }
         
         function addZonePoint(event, split = 'top') {
-            const rect = event.target.getBoundingClientRect();
+            const target = event.target;
+            const rect = target.getBoundingClientRect();
             
-            // Scale based on actual canvas dimensions
-            const scaleX = canvasWidth / rect.width;
-            const scaleY = canvasHeight / rect.height;
+            // Determine which canvas was clicked based on ID
+            const isTopCanvas = target.id === 'zone-canvas-top';
+            const isBottomCanvas = target.id === 'zone-canvas-bottom';
             
-            const x = Math.round((event.clientX - rect.left) * scaleX);
-            let y = Math.round((event.clientY - rect.top) * scaleY);
-            
-            // Adjust Y for bottom split
-            if (isSplitFrame && split === 'bottom') {
-                y = y - splitY;
+            if (isSplitFrame) {
+                // Split frame mode
+                if (isTopCanvas) {
+                    // Top canvas clicked
+                    const targetRect = rect; // Use rect from the clicked canvas
+                    const scaleX = videoNaturalWidth / targetRect.width;
+                    const scaleY = topCanvasHeight / targetRect.height;
+                    
+                    const x = Math.round((event.clientX - targetRect.left) * scaleX);
+                    const y = Math.round((event.clientY - targetRect.top) * scaleY);
+                    
+                    console.log(`[Zone] Top canvas click: video=${videoNaturalWidth}x${videoNaturalHeight}, canvas=${zoneCanvasTop.width}x${zoneCanvasTop.height}, rect=${targetRect.width}x${targetRect.height}, scale=${scaleX.toFixed(2)}x${scaleY.toFixed(2)}, point=(${x}, ${y})`);
+                    
+                    // Send point with coordinates relative to top split (0 to splitY)
+                    sendCommand('add_zone_point', { x, y });
+                    zonePoints.push({ x, y });
+                    drawAllZones();
+                    addLog(`Zone point added (TOP split): (${x}, ${y})`, 'info');
+                } else if (isBottomCanvas) {
+                    // Bottom canvas clicked
+                    const targetRect = rect; // Use rect from the clicked canvas
+                    const scaleX = videoNaturalWidth / targetRect.width;
+                    const scaleY = bottomCanvasHeight / targetRect.height;
+                    
+                    const x = Math.round((event.clientX - targetRect.left) * scaleX);
+                    let y = Math.round((event.clientY - targetRect.top) * scaleY);
+                    
+                    // Adjust Y to be relative to bottom split (subtract splitY)
+                    y = y - splitY;
+                    
+                    console.log(`[Zone] Bottom canvas click: video=${videoNaturalWidth}x${videoNaturalHeight}, canvas=${zoneCanvasBottom.width}x${zoneCanvasBottom.height}, rect=${targetRect.width}x${targetRect.height}, scale=${scaleX.toFixed(2)}x${scaleY.toFixed(2)}, point=(${x}, ${y})`);
+                    
+                    // Send point with coordinates relative to bottom split (negative Y, relative to splitY)
+                    sendCommand('add_zone_point', { x, y });
+                    zonePoints.push({ x, y });
+                    drawAllZones();
+                    addLog(`Zone point added (BOTTOM split): (${x}, ${y}) [relative to bottom split]`, 'info');
+                }
+            } else {
+                // Single camera mode
+                const targetRect = rect;
+                const scaleX = videoNaturalWidth / targetRect.width;
+                const scaleY = canvasHeight / targetRect.height;
+                
+                const x = Math.round((event.clientX - targetRect.left) * scaleX);
+                const y = Math.round((event.clientY - targetRect.top) * scaleY);
+                
+                console.log(`[Zone] Single camera click: video=${videoNaturalWidth}x${videoNaturalHeight}, canvas=${zoneCanvasTop.width}x${zoneCanvasTop.height}, rect=${targetRect.width}x${targetRect.height}, scale=${scaleX.toFixed(2)}x${scaleY.toFixed(2)}, point=(${x}, ${y})`);
+                
+                sendCommand('add_zone_point', { x, y });
+                zonePoints.push({ x, y });
+                drawAllZones();
+                addLog(`Zone point added: (${x}, ${y})`, 'info');
             }
-            
-            console.log(`[Zone] Click position: split=${split}, canvas=${canvasWidth}x${canvasHeight}, display=${rect.width.toFixed(0)}x${rect.height.toFixed(0)}, scale=${scaleX.toFixed(2)}x${scaleY.toFixed(2)}, point=(${x}, ${y})`);
-            
-            sendCommand('add_zone_point', { x, y });
-            console.log(`[Zone] Sent zone point command to server (${split} split)`);
-            zonePoints.push({ x, y });
-            
-            // Redraw all zones including current drawing
-            drawAllZones();
-            
-            addLog(`Zone point added (${split} split): (${x}, ${y})`, 'info');
         }
         
         function clearZones() {
