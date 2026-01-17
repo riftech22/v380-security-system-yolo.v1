@@ -723,7 +723,9 @@ class SecurityWebSystem:
                     logging.warning("[Snapshot] V380 frame not available")
                     frame = None
             else:
-                # Normal mode: try processed frame first
+                # Normal mode: try multiple sources for frame
+                
+                # 1. Try processing thread (most likely to have processed frame)
                 logging.info("[Snapshot] Trying processing thread...")
                 if self.processing_thread:
                     frame = self.processing_thread.get_processed_frame()
@@ -731,11 +733,23 @@ class SecurityWebSystem:
                         logging.info(f"[Snapshot] Got processed frame: {frame.shape}")
                     else:
                         frame = None
-                        logging.warning("[Snapshot] No processed frame available")
+                        logging.warning("[Snapshot] No processed frame from processing thread")
                 else:
                     logging.warning("[Snapshot] Processing thread not available")
                 
-                # If no processed frame, try raw frame from capture thread
+                # 2. Try detection thread's processed frame (alternative source)
+                if frame is None and self.detection_thread:
+                    logging.info("[Snapshot] Trying detection thread's processed frame...")
+                    results = self.detection_thread.get_results()
+                    if results and results.get('frame') is not None:
+                        det_frame = results.get('frame')
+                        if det_frame.size > 0:
+                            frame = det_frame
+                            logging.info(f"[Snapshot] Got detection thread frame: {frame.shape}")
+                    else:
+                        logging.warning("[Snapshot] No frame from detection thread")
+                
+                # 3. Try raw frame from capture thread (last resort before demo)
                 if frame is None and self.capture_thread:
                     logging.info("[Snapshot] Trying raw frame from capture thread...")
                     raw_frame = self.capture_thread.get_frame()
