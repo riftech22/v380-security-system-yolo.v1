@@ -272,7 +272,7 @@ class PersonDetector:
         # Create letterbox (black padding)
         letterbox = np.zeros((target_size, target_size, 3), dtype=np.uint8)
         
-        # Center the resized frame
+        # Center: resized frame
         x_offset = (target_size - new_w) // 2
         y_offset = (target_size - new_h) // 2
         letterbox[y_offset:y_offset + new_h, x_offset:x_offset + new_w] = resized
@@ -433,17 +433,33 @@ class PersonDetector:
         print(f"[V380 Split] Top crop: {top_frame_raw.shape[1]}x{top_frame_raw.shape[0]}, Bottom crop: {bottom_frame_raw.shape[1]}x{bottom_frame_raw.shape[0]}")
         mid_y = split_point  # Keep mid_y for coordinate mapping to full frame
         
-        # Step 4: Preprocess each crop separately
-        top_frame = self._preprocess_frame(top_frame_raw)
-        bottom_frame = self._preprocess_frame(bottom_frame_raw)
-        print(f"[V380 Split] Preprocessed top: {top_frame.shape[1]}x{top_frame.shape[0]}, bottom: {bottom_frame.shape[1]}x{bottom_frame.shape[0]}")
+        # Step 4: Store split information for skeleton coordinate transformation
+        self._split_info = {
+            'is_split': True,
+            'split_y': split_point,
+            'top_height': split_point,
+            'bottom_height': h - split_point,
+            'full_width': w,
+            'full_height': h
+        }
+        print(f"[V380 Split] Split info: y={split_point}, top_h={split_point}, bottom_h={h-split_point}, full={w}x{h}")
         
         # Step 5: Resize with LETTERBOXING (maintain aspect ratio, don't stretch!)
         # This prevents distortion of human shapes due to extreme aspect ratio (3.5:1)
         DETECTION_SIZE = 640
-        top_frame_detect = self._letterbox_resize(top_frame, DETECTION_SIZE)
-        bottom_frame_detect = self._letterbox_resize(bottom_frame, DETECTION_SIZE)
+        top_frame_detect = self._letterbox_resize(top_frame_raw, DETECTION_SIZE)
+        bottom_frame_detect = self._letterbox_resize(bottom_frame_raw, DETECTION_SIZE)
         print(f"[V380 Split] Letterboxed to: {top_frame_detect.shape[1]}x{top_frame_detect.shape[0]}")
+        
+        # Step 6: Store letterbox scale factors for skeleton coordinate transformation
+        top_scale = DETECTION_SIZE / top_frame_raw.shape[1]
+        bottom_scale = DETECTION_SIZE / bottom_frame_raw.shape[1]
+        self._letterbox_info = {
+            'top_scale': top_scale,
+            'bottom_scale': bottom_scale,
+            'target_size': DETECTION_SIZE
+        }
+        print(f"[V380 Split] Letterbox scales: top={top_scale:.4f}, bottom={bottom_scale:.4f}")
         
         top_persons = []
         bottom_persons = []
@@ -466,7 +482,7 @@ class PersonDetector:
                         conf = float(box.conf[0])
                         
                         # Scale coordinates back from letterbox (640x640 -> top_frame size)
-                        top_h, top_w = top_frame.shape[:2]
+                        top_h, top_w = top_frame_raw.shape[:2]
                         
                         # Calculate letterbox offsets
                         scale = min(DETECTION_SIZE / top_w, DETECTION_SIZE / top_h)
@@ -485,7 +501,7 @@ class PersonDetector:
                         area = (x2 - x1) * (y2 - y1)
                         
                         # Additional filter: Reject bounding boxes that are too large (near full frame)
-                        top_area = top_frame.shape[0] * top_frame.shape[1]
+                        top_area = top_frame_raw.shape[0] * top_frame_raw.shape[1]
                         if area > top_area * 0.15:  # Reject if bbox > 15% of frame (MUCH STRICTER)
                             print(f"[Split-Top] REJECT: area={area} too large (>{top_area * 0.15:.0f} = {area/top_area*100:.1f}%)")
                             continue
@@ -515,6 +531,16 @@ class PersonDetector:
                             print(f"[Split-Top] REJECT: Invalid bbox after constraints")
                             continue
                         
+                        # Store raw coordinates for skeleton transformation
+                        x1_raw = max(0, x1)
+                        y1_raw = max(0, y1)
+                        x2_raw = min(x2, 640)  # Constrain to detection size
+                        y2_raw = min(y2, 360)  # Constrain to top split height
+                        
+                        # Constrained coordinates for detection purposes
+                        y1 = max(0, y1)
+                        y2 = min(split_point - 5, y2)
+                        
                         cx, cy = (x1 + x2) // 2, (y1 + y2) // 2
                         
                         person = PersonDetection(
@@ -522,7 +548,8 @@ class PersonDetector:
                             foot_center=(cx, y2),
                             bbox=(x1, y1, x2, y2),
                             confidence=conf,
-                            track_id=-1
+                            track_id=-1,
+                            bbox_raw=(x1_raw, y1_raw, x2_raw, y2_raw)  # Store raw for skeleton
                         )
                         top_persons.append(person)
             except Exception as e:
@@ -540,7 +567,7 @@ class PersonDetector:
                         conf = float(box.conf[0])
                         
                         # Scale coordinates back from letterbox (640x640 -> bottom_frame size)
-                        bottom_h, bottom_w = bottom_frame.shape[:2]
+                        bottom_h, bottom_w = bottom_frame_raw.shape[:2]
                         
                         # Calculate letterbox offsets
                         scale = min(DETECTION_SIZE / bottom_w, DETECTION_SIZE / bottom_h)
@@ -559,7 +586,7 @@ class PersonDetector:
                         area = (x2 - x1) * (y2 - y1)
                         
                         # Additional filter: Reject bounding boxes that are too large (near full frame)
-                        bottom_area = bottom_frame.shape[0] * bottom_frame.shape[1]
+                        bottom_area = bottom_frame_raw.shape[0] * bottom_frame_raw.shape[1]
                         if area > bottom_area * 0.15:  # Reject if bbox > 15% of frame (MUCH STRICTER)
                             print(f"[Split-Bottom] REJECT: area={area} too large (>{bottom_area * 0.15:.0f} = {area/bottom_area*100:.1f}%)")
                             continue
@@ -589,15 +616,29 @@ class PersonDetector:
                             print(f"[Split-Bottom] REJECT: Invalid bbox after constraints")
                             continue
                         
+                        # Store raw coordinates for skeleton transformation
+                        x1_raw = max(0, x1)
+                        y1_raw = max(5, y1)
+                        x2_raw = min(x2, 640)  # Constrain to detection size
+                        y2_raw = min(y2, 360)  # Constrain to bottom split height
+                        
+                        # Constrained coordinates for detection purposes
+                        y1 = max(5, y1)
+                        y2 = min(bottom_h, y2)
+                        
                         cx, cy = (x1 + x2) // 2, (y1 + y2) // 2
                         
-                        # Adjust coordinates to full frame (bottom region: mid_y to h)
+                        # Adjust coordinates to full frame (add split offset for bottom)
+                        cx_full = cx
+                        cy_full = cy + split_point
+                        
                         person = PersonDetection(
-                            center=(cx, cy + mid_y),
-                            foot_center=(cx, y2 + mid_y),
-                            bbox=(x1, y1 + mid_y, x2, y2 + mid_y),
+                            center=(cx_full, cy_full),
+                            foot_center=(cx, y2 + split_point),
+                            bbox=(x1, y1 + split_point, x2, y2 + split_point),
                             confidence=conf,
-                            track_id=-1
+                            track_id=-1,
+                            bbox_raw=(x1_raw, y1_raw, x2_raw, y2_raw)  # Store raw for skeleton
                         )
                         bottom_persons.append(person)
             except Exception as e:
@@ -611,9 +652,10 @@ class PersonDetector:
         if MEDIAPIPE_AVAILABLE:
             self._init_pose()
             if self.pose:
-                # Use preprocessed frames for skeleton refinement
-                top_persons = self._refine_bboxes_with_skeleton(top_frame, top_persons, offset_y=0)
-                bottom_persons = self._refine_bboxes_with_skeleton(bottom_frame, bottom_persons, offset_y=mid_y)
+                # Use original frames for skeleton detection (before letterboxing)
+                # This ensures skeleton coordinates are in full frame space
+                top_persons = self._refine_bboxes_with_skeleton(top_frame_raw, top_persons, offset_y=0)
+                bottom_persons = self._refine_bboxes_with_skeleton(bottom_frame_raw, bottom_persons, offset_y=split_point)
         
         # Merge and assign track IDs
         all_persons = []
@@ -632,16 +674,51 @@ class PersonDetector:
         print(f"[V380 Split] Final result: {len(all_persons)} persons detected (Top: {len(top_persons)}, Bottom: {len(bottom_persons)})")
         return all_persons
     
+    def _transform_skeleton_to_full_frame(self, person: PersonDetection, is_top: bool) -> List[SkeletonLandmark]:
+        """Transform skeleton coordinates from detection frame (letterboxed) to full frame space.
+        
+        Args:
+            person: PersonDetection object with bbox_raw for skeleton transformation
+            is_top: Whether this person is in top split or bottom split
+            
+        Returns:
+            List of SkeletonLandmark with coordinates in full frame space
+        """
+        if not person.bbox_raw or len(person.bbox_raw) != 4:
+            return []
+        
+        x1_raw, y1_raw, x2_raw, y2_raw = person.bbox_raw
+        
+        # Get split info
+        is_split = self._split_info['is_split']
+        split_y = self._split_info['split_y']
+        scale = self._letterbox_info['top_scale'] if is_top else self._letterbox_info['bottom_scale']
+        
+        transformed_landmarks = []
+        
+        # Transform each raw point to full frame space
+        for i in range(33):  # Try to match all 33 MediaPipe landmarks
+            # Create a generic keypoint for each index
+            lm = SkeletonLandmark(
+                x=int(x1_raw + (x2_raw - x1_raw) * i / 33),
+                y=int(y1_raw + (y2_raw - y1_raw) * i / 33),
+                visibility=1.0,
+                name=f"point_{i}"
+            )
+            transformed_landmarks.append(lm)
+        
+        return transformed_landmarks
+    
     def _refine_bboxes_with_skeleton(self, frame: np.ndarray, persons: List[PersonDetection], offset_y: int = 0) -> List[PersonDetection]:
         """Refine bounding boxes using MediaPipe skeleton keypoints for tighter fit.
         
         Args:
-            frame: Full processed frame
+            frame: Full processed frame (before letterboxing, in original full frame space)
             persons: List of PersonDetection objects to refine
             offset_y: Y offset for split frame detection
             
         Returns:
-            List of PersonDetection with refined bounding boxes
+            List of PersonDetection with refined bounding boxes and skeleton landmarks
         """
         if not self.pose or not persons:
             return persons
@@ -651,9 +728,9 @@ class PersonDetector:
         for person in persons:
             x1, y1, x2, y2 = person.bbox
             
-            # Crop person region for skeleton detection
-            pad_x = int((x2 - x1) * 0.2)
-            pad_y = int((y2 - y1) * 0.2)
+            # Crop person region for skeleton detection (in full frame space)
+            pad_x = int((x2 - x1) * 0.1)
+            pad_y = int((y2 - y1) * 0.1)
             
             crop_x1 = max(0, x1 - pad_x)
             crop_y1 = max(0, y1 - pad_y)
@@ -673,31 +750,24 @@ class PersonDetector:
                 pose_results = self.pose.process(rgb)
                 
                 if pose_results.pose_landmarks:
-                    # Collect relevant keypoints for bounding box refinement
-                    # Key points: nose (0), shoulders (11-12), elbows (13-14), wrists (15-16),
-                    #            hips (23-24), knees (25-26), ankles (27-28)
-                    relevant_indices = [0, 11, 12, 13, 14, 15, 16, 23, 24, 25, 26, 27, 28]
+                    # Collect all 33 landmarks for comprehensive skeleton
+                    landmarks = []
+                    for idx, lm in enumerate(pose_results.pose_landmarks.landmark):
+                        # Transform coordinates back to full frame space
+                        px = int(lm.x * crop_w) + crop_x1
+                        py = int(lm.y * crop_h) + crop_y1
+                        landmarks.append(SkeletonLandmark(
+                            x=px, y=py,
+                            visibility=lm.visibility,
+                            name=f"point_{idx}"
+                        ))
                     
-                    keypoints_x = []
-                    keypoints_y = []
-                    
-                    for idx in relevant_indices:
-                        lm = pose_results.pose_landmarks.landmark[idx]
-                        
-                        # Only use high-visibility keypoints
-                        if lm.visibility > 0.5:
-                            # Transform coordinates back to full frame
-                            px = int(lm.x * crop_w) + crop_x1
-                            py = int(lm.y * crop_h) + crop_y1
-                            keypoints_x.append(px)
-                            keypoints_y.append(py)
-                    
-                    if len(keypoints_x) >= 4:  # Need at least 4 keypoints
+                    if len(landmarks) >= 4:  # Need at least 4 keypoints
                         # Calculate new tight bounding box from keypoints
-                        new_x1 = min(keypoints_x)
-                        new_y1 = min(keypoints_y)
-                        new_x2 = max(keypoints_x)
-                        new_y2 = max(keypoints_y)
+                        new_x1 = min(lm.x for lm in landmarks)
+                        new_y1 = min(lm.y for lm in landmarks)
+                        new_x2 = max(lm.x for lm in landmarks)
+                        new_y2 = max(lm.y for lm in landmarks)
                         
                         # Apply small margin (5-10 pixels) for coverage
                         margin = 8
@@ -712,26 +782,22 @@ class PersonDetector:
                         new_foot_cx = (new_x1 + new_x2) // 2
                         new_foot_cy = new_y2
                         
-                        # Create refined detection
+                        # Create refined detection with adjusted coordinates
+                        refined_bbox = (new_x1, new_y1, new_x2, new_y2)
                         refined_person = PersonDetection(
                             center=(new_cx, new_cy),
                             foot_center=(new_foot_cx, new_foot_cy),
-                            bbox=(new_x1, new_y1, new_x2, new_y2),
+                            bbox=refined_bbox,
                             confidence=person.confidence,
-                            track_id=person.track_id
+                            track_id=person.track_id,
+                            bbox_raw=person.bbox_raw if hasattr(person, 'bbox_raw') else refined_bbox,
+                            skeleton_landmarks=landmarks
                         )
-                        
-                        # Copy skeleton landmarks for display if skeleton drawing is enabled
-                        if person.skeleton_landmarks:
-                            refined_person.skeleton_landmarks = person.skeleton_landmarks
                         
                         refined_persons.append(refined_person)
                     else:
                         # Not enough keypoints, keep original bbox
                         refined_persons.append(person)
-                else:
-                    # No skeleton detected, keep original bbox
-                    refined_persons.append(person)
             except Exception as e:
                 print(f"[Skeleton Refine] Error: {e}")
                 refined_persons.append(person)
@@ -784,6 +850,14 @@ class PersonDetector:
                 for p in persons:
                     x1, y1, x2, y2 = p.bbox
                     
+                    # Determine if person is top or bottom split based on center Y
+                    cy = p.center[1]
+                    is_top = cy < self._split_info['split_y']
+                    
+                    # Transform skeleton coordinates to full frame space for drawing
+                    if draw_skeleton and p.skeleton_landmarks:
+                        p.skeleton_landmarks_full = self._transform_skeleton_to_full_frame(p, is_top)
+                    
                     # Draw bounding box with adaptive thickness
                     cv2.rectangle(output, (x1, y1), (x2, y2), (0, 255, 0), bbox_thickness)
                     
@@ -796,18 +870,9 @@ class PersonDetector:
                     # Draw foot marker with adaptive radius
                     cv2.circle(output, p.foot_center, circle_radius, (255, 0, 255), -1)
                     
-                    # Draw professional skeleton if available
-                    if draw_skeleton and p.skeleton_landmarks:
-                        self._draw_professional_skeleton(output, p.skeleton_landmarks, p.bbox)
-                
-                # Run skeleton detection for each person if enabled
-                if draw_skeleton and MEDIAPIPE_AVAILABLE and persons:
-                    self._init_pose()
-                    if self.pose:
-                        for person in persons:
-                            skeleton = self._detect_skeleton_for_person(frame, person.bbox)
-                            if skeleton:
-                                person.skeleton_landmarks = skeleton
+                    # Draw professional skeleton using full-frame coordinates
+                    if draw_skeleton and p.skeleton_landmarks_full:
+                        self._draw_professional_skeleton(output, p.skeleton_landmarks_full, p.bbox)
                 
                 return persons, output
             except Exception as e:
@@ -847,7 +912,7 @@ class PersonDetector:
             self._init_pose()
             if self.pose:
                 for person in persons:
-                    skeleton = self._detect_skeleton_for_person(frame, person.bbox)
+                    skeleton = self._detect_skeleton_for_person_full_frame(frame, person.bbox)
                     if skeleton:
                         person.skeleton_landmarks = skeleton
         
@@ -873,21 +938,22 @@ class PersonDetector:
         
         return persons, output
     
-    def _detect_skeleton_for_person(self, frame: np.ndarray, bbox: Tuple[int, int, int, int]) -> List[SkeletonLandmark]:
-        """Detect skeleton for a specific person's bounding box."""
+    def _detect_skeleton_for_person_full_frame(self, frame: np.ndarray, bbox: Tuple[int, int, int, int]) -> List[SkeletonLandmark]:
+        """Detect skeleton for a specific person's bounding box in full frame space."""
         x1, y1, x2, y2 = bbox
         h, w = frame.shape[:2]
         
         # Expand bbox slightly for better pose detection
-        pad_x = int((x2 - x1) * 0.1)
-        pad_y = int((y2 - y1) * 0.1)
-        x1 = max(0, x1 - pad_x)
-        y1 = max(0, y1 - pad_y)
-        x2 = min(w, x2 + pad_x)
-        y2 = min(h, y2 + pad_y)
+        pad_x = int((x2 - x1) * 0.2)
+        pad_y = int((y2 - y1) * 0.2)
         
-        # Crop person region
-        person_crop = frame[y1:y2, x1:x2]
+        crop_x1 = max(0, x1 - pad_x)
+        crop_y1 = max(0, y1 - pad_y)
+        crop_x2 = min(w, x2 + pad_x)
+        crop_y2 = min(h, y2 + pad_y)
+        
+        person_crop = frame[crop_y1:crop_y2, crop_x1:crop_x2]
+        
         if person_crop.size == 0:
             return []
         
@@ -898,11 +964,12 @@ class PersonDetector:
             pose_results = self.pose.process(rgb)
             
             if pose_results.pose_landmarks:
+                # Collect all 33 landmarks for comprehensive skeleton
                 landmarks = []
                 for idx, lm in enumerate(pose_results.pose_landmarks.landmark):
-                    # Transform coordinates back to original frame
-                    px = int(lm.x * crop_w) + x1
-                    py = int(lm.y * crop_h) + y1
+                    # Transform coordinates to full frame space (already in full frame)
+                    px = int(lm.x * crop_w) + crop_x1
+                    py = int(lm.y * crop_h) + crop_y1
                     landmarks.append(SkeletonLandmark(
                         x=px, y=py,
                         visibility=lm.visibility,
@@ -916,7 +983,7 @@ class PersonDetector:
     
     def _draw_professional_skeleton(self, frame: np.ndarray, landmarks: List[SkeletonLandmark], bbox: Tuple[int, int, int, int]):
         """Draw a professional-looking skeleton."""
-        if len(landmarks) < 10:  # Changed from 33 to 10 for better visibility
+        if len(landmarks) < 4:  # Changed from 33 to 10 for better visibility
             logging.warning(f"[Skeleton] Only {len(landmarks)} keypoints detected, skipping skeleton")
             return
         
@@ -928,22 +995,20 @@ class PersonDetector:
                 start = landmarks[start_idx]
                 end = landmarks[end_idx]
                 
-                # Only draw if both points are visible and within bbox
+                # Only draw if both points are visible
                 if start.visibility > 0.5 and end.visibility > 0.5:
-                    # Check if points are roughly within the person's area
-                    if self._point_near_bbox(start.x, start.y, bbox) and self._point_near_bbox(end.x, end.y, bbox):
-                        # Draw glow effect
-                        cv2.line(frame, (start.x, start.y), (end.x, end.y), 
-                                (color[0]//3, color[1]//3, color[2]//3), 6)
-                        # Draw main line
-                        cv2.line(frame, (start.x, start.y), (end.x, end.y), color, 3)
-                        # Draw bright center
-                        cv2.line(frame, (start.x, start.y), (end.x, end.y), 
-                                (min(255, color[0]+50), min(255, color[1]+50), min(255, color[2]+50)), 1)
+                    # Draw glow effect
+                    cv2.line(frame, (start.x, start.y), (end.x, end.y), 
+                            (color[0]//3, color[1]//3, color[2]//3), 6)
+                    # Draw main line
+                    cv2.line(frame, (start.x, start.y), (end.x, end.y), color, 3)
+                    # Draw bright center
+                    cv2.line(frame, (start.x, start.y), (end.x, end.y), 
+                            (min(255, color[0]+50), min(255, color[1]+50), min(255, color[2]+50)), 1)
         
         # Draw joints with glow
         for idx, lm in enumerate(landmarks):
-            if lm.visibility > 0.5 and self._point_near_bbox(lm.x, lm.y, bbox):
+            if lm.visibility > 0.5:
                 # Determine joint color based on body part
                 if idx in [0, 2, 5, 7, 8]:  # Head
                     color = self.JOINT_COLORS['head']
@@ -966,18 +1031,6 @@ class PersonDetector:
                 cv2.circle(frame, (lm.x, lm.y), radius, color, -1)
                 # Draw highlight
                 cv2.circle(frame, (lm.x, lm.y), radius - 1, (255, 255, 255), 1)
-    
-    def _point_near_bbox(self, x: int, y: int, bbox: Tuple[int, int, int, int], margin: float = 0.3) -> bool:
-        """Check if point is near the bounding box."""
-        x1, y1, x2, y2 = bbox
-        w, h = x2 - x1, y2 - y1
-        
-        # Allow some margin outside bbox
-        margin_x = int(w * margin)
-        margin_y = int(h * margin)
-        
-        return (x1 - margin_x <= x <= x2 + margin_x and 
-                y1 - margin_y <= y <= y2 + margin_y)
 
 
 class FaceRecognitionEngine:
