@@ -691,7 +691,7 @@ class SecurityWebServer:
             }))
     
     async def broadcast_task(self):
-        """Non-blocking broadcast task - Optimized for multi-client."""
+        """Non-blocking broadcast task - Fix frame stacking with validation."""
         frame_count = 0
         last_log_time = time.time()
         target_fps = 15
@@ -707,6 +707,7 @@ class SecurityWebServer:
                 if frame is not None:
                     # Validate frame before encoding
                     if frame.size == 0 or frame.shape[0] == 0 or frame.shape[1] == 0:
+                        logging.warning("[Broadcast] Invalid frame, skipping")
                         await asyncio.sleep(frame_interval)
                         continue
                     
@@ -714,62 +715,51 @@ class SecurityWebServer:
                     if len(frame.shape) == 2 or frame.shape[2] == 1:
                         frame = cv2.cvtColor(frame, cv2.COLOR_GRAY2BGR)
                     
-                    # Encode frame with error handling
+                    # Optimized encoding with error handling
                     try:
-                        encode_start = time.time()
                         encode_params = [
-                            cv2.IMWRITE_JPEG_QUALITY, 50,  # Lower quality for multi-client
+                            cv2.IMWRITE_JPEG_QUALITY, 65,
                             cv2.IMWRITE_JPEG_OPTIMIZE, 0,
                             cv2.IMWRITE_JPEG_PROGRESSIVE, 0
                         ]
                         
                         success, buffer = cv2.imencode('.jpg', frame, encode_params)
                         if not success:
-                            logging.error("[Broadcast] Encoding failed")
+                            logging.warning("[Broadcast] Encoding failed, skipping frame")
                             await asyncio.sleep(frame_interval)
                             continue
                         
                         frame_b64 = base64.b64encode(buffer).decode('utf-8')
-                        encode_time = time.time() - encode_start
                         
-                        # Create message
                         message = json.dumps({
                             'type': 'frame',
                             'timestamp': time.time(),
                             'data': frame_b64
                         })
                         
-                        # Broadcast to all clients - Handle each separately
+                        # Non-blocking broadcast
                         if self.clients:
-                            disconnected_clients = []
-                            for client in list(self.clients):
-                                try:
-                                    # Send with timeout to prevent blocking
-                                    await asyncio.wait_for(client.send(message), timeout=0.5)
-                                except asyncio.TimeoutError:
-                                    logging.warning(f"[Broadcast] Timeout for client")
-                                    disconnected_clients.append(client)
-                                except (websockets.exceptions.ConnectionClosed, Exception) as e:
-                                    logging.warning(f"[Broadcast] Client error: {e}")
-                                    disconnected_clients.append(client)
-                            
-                            # Remove disconnected clients
-                            for client in disconnected_clients:
-                                self.clients.discard(client)
+                            try:
+                                await asyncio.gather(
+                                    *[client.send(message) for client in self.clients],
+                                    return_exceptions=True
+                                )
+                            except Exception as e:
+                                logging.warning(f"[Broadcast] Send error: {e}")
                         
                         frame_count += 1
-                        
-                        # Log FPS every 2 seconds
-                        if time.time() - last_log_time >= 2.0:
-                            actual_fps = frame_count / (time.time() - last_log_time)
-                            logging.info(f"[Broadcast] FPS: {actual_fps:.1f}, Clients: {len(self.clients)}, Encode: {encode_time*1000:.1f}ms")
-                            frame_count = 0
-                            last_log_time = time.time()
                     
                     except Exception as e:
                         logging.error(f"[Broadcast] Encoding error: {e}")
                         await asyncio.sleep(frame_interval)
                         continue
+                
+                # Log FPS every 2 seconds
+                if time.time() - last_log_time >= 2.0:
+                    actual_fps = frame_count / (time.time() - last_log_time)
+                    logging.info(f"[Broadcast] FPS: {actual_fps:.1f}, Clients: {len(self.clients)}")
+                    frame_count = 0
+                    last_log_time = time.time()
                 
                 # Calculate sleep time
                 elapsed = time.time() - start_time
@@ -778,6 +768,8 @@ class SecurityWebServer:
             
             except Exception as e:
                 logging.error(f"[Broadcast] Fatal error: {e}")
+                import traceback
+                traceback.print_exc()
                 await asyncio.sleep(0.05)
     
     async def start(self):
