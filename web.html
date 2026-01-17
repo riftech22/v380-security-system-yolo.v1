@@ -1276,7 +1276,16 @@
                     break;
                     
                 case 'snapshot':
-                    showSnapshot(message.data);
+                    if (message.data) {
+                        showSnapshot(message.data);
+                    } else {
+                        addLog('Snapshot data is empty', 'error');
+                    }
+                    break;
+                    
+                case 'error':
+                    addLog(`Server error: ${message.message}`, 'error');
+                    alert(`Snapshot Error: ${message.message}`);
                     break;
                     
                 case 'zones':

@@ -703,20 +703,63 @@ class SecurityWebSystem:
         logging.info(f"[Audio] Muted: {muted}")
     
     def take_snapshot(self) -> str:
-        frame = self.processing_thread.get_processed_frame()
-        if frame is None:
-            frame = self._create_demo_frame()
-        
-        ts = time.strftime("%Y%m%d_%H%M%S")
-        path = f"snapshots/snap_{ts}.jpg"
+        """Take snapshot - works in both normal and V380 mode."""
         try:
-            cv2.imwrite(path, frame)
-            logging.info(f"[Snapshot] Saved: {path}")
-        except Exception as e:
-            logging.error(f"[Snapshot] Error: {e}")
+            logging.info("[Snapshot] Starting snapshot capture...")
+            
+            # Ensure snapshots directory exists
+            import os
+            os.makedirs('snapshots', exist_ok=True)
+            
+            # Get frame from appropriate source based on mode
+            if self.use_v380_ffmpeg:
+                # Get frame from V380 processor
+                logging.info("[Snapshot] Getting frame from V380 processor...")
+                frame = self._get_v380_frame()
+                if frame is None or frame.size == 0:
+                    logging.warning("[Snapshot] No V380 frame available, using demo frame")
+                    frame = self._create_demo_frame()
+            else:
+                # Get frame from processing thread
+                logging.info("[Snapshot] Getting frame from processing thread...")
+                if self.processing_thread:
+                    frame = self.processing_thread.get_processed_frame()
+                    if frame is None:
+                        logging.warning("[Snapshot] No frame from processing thread, using demo frame")
+                        frame = self._create_demo_frame()
+                else:
+                    logging.warning("[Snapshot] Processing thread not available, using demo frame")
+                    frame = self._create_demo_frame()
+            
+            # Validate frame
+            if frame is None or frame.size == 0:
+                logging.error("[Snapshot] Failed to get valid frame")
+                raise Exception("No valid frame available")
+            
+            logging.info(f"[Snapshot] Frame captured: {frame.shape}")
+            
+            # Save snapshot to file
+            ts = time.strftime("%Y%m%d_%H%M%S")
+            path = f"snapshots/snap_{ts}.jpg"
+            try:
+                cv2.imwrite(path, frame)
+                logging.info(f"[Snapshot] Saved to file: {path}")
+            except Exception as e:
+                logging.error(f"[Snapshot] Error saving file: {e}")
+                # Continue anyway, we still have the frame in memory
+            
+            # Encode to base64 for web transmission
+            _, buffer = cv2.imencode('.jpg', frame, [cv2.IMWRITE_JPEG_QUALITY, 95])
+            return base64.b64encode(buffer).decode('utf-8')
         
-        _, buffer = cv2.imencode('.jpg', frame, [cv2.IMWRITE_JPEG_QUALITY, 95])
-        return base64.b64encode(buffer).decode('utf-8')
+        except Exception as e:
+            logging.error(f"[Snapshot] Fatal error: {e}")
+            import traceback
+            traceback.print_exc()
+            # Return demo frame as fallback
+            demo_frame = self._create_demo_frame()
+            _, buffer = cv2.imencode('.jpg', demo_frame, [cv2.IMWRITE_JPEG_QUALITY, 95])
+            return base64.b64encode(buffer).decode('utf-8')
     
     def set_confidence(self, conf: float):
         self.confidence = conf
@@ -1051,11 +1094,29 @@ class SecurityWebServer:
             await self.broadcast_status()
         
         elif cmd_type == 'snapshot':
-            snapshot = self.system.take_snapshot()
-            if snapshot:
+            logging.info("[WebSocket] Snapshot request received")
+            try:
+                snapshot = self.system.take_snapshot()
+                if snapshot and len(snapshot) > 0:
+                    logging.info(f"[WebSocket] Snapshot generated successfully, size: {len(snapshot)} bytes")
+                    await websocket.send(json.dumps({
+                        'type': 'snapshot',
+                        'data': snapshot
+                    }))
+                    logging.info("[WebSocket] Snapshot sent to client")
+                else:
+                    logging.error("[WebSocket] Snapshot generation failed - empty result")
+                    await websocket.send(json.dumps({
+                        'type': 'error',
+                        'message': 'Failed to generate snapshot'
+                    }))
+            except Exception as e:
+                logging.error(f"[WebSocket] Snapshot error: {e}")
+                import traceback
+                traceback.print_exc()
                 await websocket.send(json.dumps({
-                    'type': 'snapshot',
-                    'data': snapshot
+                    'type': 'error',
+                    'message': f'Snapshot error: {str(e)}'
                 }))
         
         elif cmd_type == 'set_confidence':
