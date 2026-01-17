@@ -33,6 +33,14 @@ except ImportError as e:
     logging.warning(f"[Import] Running in demo mode: {e}")
     MODULES_AVAILABLE = False
 
+# Import V380 FFmpeg Pipeline
+try:
+    from v380_ffmpeg_pipeline import V380FFmpegProcessor
+    V380_AVAILABLE = True
+except ImportError as e:
+    logging.warning(f"[Import] V380 FFmpeg Pipeline not available: {e}")
+    V380_AVAILABLE = False
+
 
 class FrameBuffer:
     """Thread-safe frame buffer pool."""
@@ -219,7 +227,7 @@ class ProcessingThread:
 class SecurityWebSystem:
     """Backend Security System dengan multi-threading."""
     
-    def __init__(self):
+    def __init__(self, use_v380_ffmpeg: bool = False):
         self.config = None
         self.db = None
         self.zone_manager = None
@@ -233,6 +241,10 @@ class SecurityWebSystem:
         # Multi-threading components
         self.capture_thread = None
         self.processing_thread = None
+        
+        # V380 FFmpeg Pipeline (Frigate-style)
+        self.v380_processor = None
+        self.use_v380_ffmpeg = use_v380_ffmpeg and V380_AVAILABLE
         
         # State
         self.running = False
@@ -277,21 +289,55 @@ class SecurityWebSystem:
         """Start camera dengan multi-threading."""
         logging.info("[Camera] Initializing...")
         
-        camera_source = Config.CAMERA_SOURCE if self.config else 0
-        
-        # Start capture thread
-        self.capture_thread = CaptureThread(camera_source, buffer_size=3)
-        self.capture_thread.start()
-        
-        # Wait for first frame
-        time.sleep(1.0)
-        
-        if self.capture_thread.get_frame() is not None:
-            self.camera_available = True
-            logging.info("[Camera] Connected successfully")
+        # Check if using V380 FFmpeg Pipeline
+        if self.use_v380_ffmpeg:
+            logging.info("[Camera] Using V380 FFmpeg Pipeline (Frigate-style)")
+            
+            rtsp_url = Config.CAMERA_SOURCE if self.config else "rtsp://admin:admin@192.168.1.108:554/live"
+            
+            try:
+                self.v380_processor = V380FFmpegProcessor(
+                    rtsp_url=rtsp_url,
+                    model_path="yolov8s.pt",
+                    detect_fps=5,
+                    device="cpu",
+                    conf_threshold=self.confidence,
+                    iou_threshold=0.45
+                )
+                self.v380_processor.start()
+                
+                # Wait for initial frames
+                time.sleep(3)
+                
+                # Check if we have detections
+                result = self.v380_processor.get_latest_detection()
+                if result:
+                    self.camera_available = True
+                    logging.info("[Camera] V380 FFmpeg Pipeline connected successfully")
+                else:
+                    logging.warning("[Camera] No frames from V380, falling back to demo mode")
+                    self.camera_available = False
+                    
+            except Exception as e:
+                logging.error(f"[Camera] V380 FFmpeg Pipeline error: {e}")
+                self.camera_available = False
         else:
-            logging.warning("[Camera] No frame detected, using demo mode")
-            self.camera_available = False
+            # Use original OpenCV capture
+            camera_source = Config.CAMERA_SOURCE if self.config else 0
+            
+            # Start capture thread
+            self.capture_thread = CaptureThread(camera_source, buffer_size=3)
+            self.capture_thread.start()
+            
+            # Wait for first frame
+            time.sleep(1.0)
+            
+            if self.capture_thread.get_frame() is not None:
+                self.camera_available = True
+                logging.info("[Camera] Connected successfully (OpenCV)")
+            else:
+                logging.warning("[Camera] No frame detected, using demo mode")
+                self.camera_available = False
     
     def start_detection(self):
         """Start detection modules."""
@@ -324,9 +370,83 @@ class SecurityWebSystem:
         self.processing_thread.start()
         logging.info("[Processing] Thread started")
     
+    def _get_v380_frame(self) -> Optional[np.ndarray]:
+        """Get processed frame from V380 FFmpeg Pipeline."""
+        if not self.v380_processor:
+            return None
+        
+        try:
+            result = self.v380_processor.get_latest_detection()
+            if not result:
+                return None
+            
+            # Draw detections on both splits
+            top_frame_drawn = self.v380_processor.draw_detections(
+                result['top_frame'],
+                result['top_detections'],
+                "Top Camera (Fixed)"
+            )
+            
+            bottom_frame_drawn = self.v380_processor.draw_detections(
+                result['bottom_frame'],
+                result['bottom_detections'],
+                "Bottom Camera (PTZ)"
+            )
+            
+            # Stack frames vertically
+            combined_frame = np.vstack([top_frame_drawn, bottom_frame_drawn])
+            
+            # Add separator line
+            h = combined_frame.shape[0] // 2
+            cv2.line(combined_frame, (0, h), (combined_frame.shape[1], h), (0, 255, 255), 2)
+            
+            # Update person count
+            top_count = len(result['top_detections'].boxes) if result['top_detections'] else 0
+            bottom_count = len(result['bottom_detections'].boxes) if result['bottom_detections'] else 0
+            self.person_count = top_count + bottom_count
+            
+            return combined_frame
+            
+        except Exception as e:
+            logging.error(f"[V380] Error getting frame: {e}")
+            return None
+    
     def _process_frame_internal(self, frame: np.ndarray) -> np.ndarray:
         """Internal frame processing dengan semua fitur - FIXED frame corruption."""
         try:
+            # Check if using V380 FFmpeg Pipeline
+            if self.use_v380_ffmpeg:
+                v380_frame = self._get_v380_frame()
+                if v380_frame is not None:
+                    # Add timestamp and status overlay to V380 frame
+                    h, w = v380_frame.shape[:2]
+                    
+                    # Timestamp
+                    ts = time.strftime("%Y-%m-%d %H:%M:%S")
+                    cv2.putText(v380_frame, ts, (10, 25), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 255, 255), 2)
+                    
+                    # V380 mode indicator
+                    cv2.putText(v380_frame, "V380 SPLIT MODE", (10, h - 15), 
+                              cv2.FONT_HERSHEY_SIMPLEX, 0.6, (255, 255, 0), 2)
+                    
+                    # Recording indicator
+                    if self.is_recording:
+                        cv2.circle(v380_frame, (w - 25, 25), 10, (0, 0, 255), -1)
+                        cv2.putText(v380_frame, "REC", (w - 65, 30), 
+                                  cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 0, 255), 2)
+                    
+                    # Armed indicator
+                    if self.is_armed:
+                        cv2.putText(v380_frame, "ARMED", (w - 85, h - 45), 
+                                  cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 255, 0), 2)
+                    
+                    # FPS info
+                    fps_text = f"Capture: {self.v380_processor.capture_fps} | Detect: {self.v380_processor.detection_fps}"
+                    cv2.putText(v380_frame, fps_text, (10, 50), 
+                              cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 255, 255), 1)
+                    
+                    return v380_frame
+            
             # Validate input frame
             if frame is None or frame.size == 0:
                 return self._create_demo_frame()
@@ -570,8 +690,8 @@ class SecurityWebSystem:
 class SecurityWebServer:
     """WebSocket server dengan non-blocking broadcast."""
     
-    def __init__(self):
-        self.system = SecurityWebSystem()
+    def __init__(self, use_v380_ffmpeg: bool = False):
+        self.system = SecurityWebSystem(use_v380_ffmpeg=use_v380_ffmpeg)
         self.clients: Set = set()
         self.running = False
         self.broadcast_queue = queue.Queue(maxsize=10)
@@ -830,7 +950,27 @@ class SecurityWebServer:
 
 
 async def main():
-    server = SecurityWebServer()
+    import argparse
+    
+    # Parse command line arguments
+    parser = argparse.ArgumentParser(description='Security Web Server with V380 Support')
+    parser.add_argument('--v380', action='store_true',
+                       help='Use V380 FFmpeg Pipeline for split frame processing')
+    parser.add_argument('--rtsp', type=str, default=None,
+                       help='RTSP URL for camera (default: from config)')
+    args = parser.parse_args()
+    
+    # Start server
+    if args.v380:
+        logging.info("[Server] V380 FFmpeg Mode Enabled")
+        if V380_AVAILABLE:
+            logging.info("[Server] V380 FFmpeg Pipeline is available")
+        else:
+            logging.error("[Server] V380 FFmpeg Pipeline is NOT available")
+            logging.error("[Server] Please ensure v380_ffmpeg_pipeline.py exists")
+            sys.exit(1)
+    
+    server = SecurityWebServer(use_v380_ffmpeg=args.v380)
     
     try:
         success = await server.start()
@@ -850,4 +990,8 @@ async def main():
 
 if __name__ == "__main__":
     logging.info("Starting Security Web Server (Multi-threaded)...")
+    logging.info("[Server] Usage:")
+    logging.info("  Normal mode:    python3 web_server.py")
+    logging.info("  V380 mode:      python3 web_server.py --v380")
+    logging.info("  Custom RTSP:     python3 web_server.py --v380 --rtsp rtsp://user:pass@ip:554/live")
     asyncio.run(main())
