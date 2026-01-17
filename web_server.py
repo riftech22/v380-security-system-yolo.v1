@@ -33,6 +33,15 @@ except ImportError as e:
     logging.warning(f"[Import] Running in demo mode: {e}")
     MODULES_AVAILABLE = False
 
+# Import Telegram Bot (without Qt dependencies for server mode)
+try:
+    from telegram_bot import TelegramBot
+    TELEGRAM_AVAILABLE = True
+    logging.info("[Telegram] Telegram Bot module loaded")
+except ImportError as e:
+    logging.warning(f"[Import] Telegram Bot not available: {e}")
+    TELEGRAM_AVAILABLE = False
+
 # Import V380 FFmpeg Pipeline
 try:
     from v380_ffmpeg_pipeline import V380FFmpegProcessor
@@ -246,6 +255,10 @@ class SecurityWebSystem:
         self.v380_processor = None
         self.use_v380_ffmpeg = use_v380_ffmpeg and V380_AVAILABLE
         
+        # Telegram Bot
+        self.telegram_bot = None
+        self.telegram_enabled = False
+        
         # State
         self.running = False
         self.camera_available = False
@@ -270,6 +283,10 @@ class SecurityWebSystem:
         self.breach_active = False
         self.breach_start_time = 0
         
+        # Alert tracking
+        self.last_alert_time = 0
+        self.alert_cooldown = 60  # seconds between alerts
+        
         # Demo mode
         self.demo_mode = not MODULES_AVAILABLE
         
@@ -281,6 +298,19 @@ class SecurityWebSystem:
                 self.config = Config()
                 self.db = DatabaseManager(self.config)
                 self.zone_manager = MultiZoneManager()
+                
+                # Initialize Telegram Bot if configured
+                if TELEGRAM_AVAILABLE and self.config.TELEGRAM_BOT_TOKEN and self.config.TELEGRAM_CHAT_ID:
+                    try:
+                        # Simple Telegram sender without Qt
+                        self.telegram_enabled = True
+                        self.telegram_token = self.config.TELEGRAM_BOT_TOKEN
+                        self.telegram_chat_id = self.config.TELEGRAM_CHAT_ID
+                        self.telegram_base_url = f"https://api.telegram.org/bot{self.telegram_token}"
+                        logging.info("[System] Telegram Bot enabled")
+                    except Exception as e:
+                        logging.error(f"[System] Telegram Bot init failed: {e}")
+                        self.telegram_enabled = False
             except Exception as e:
                 logging.error(f"[Init] Error: {e}")
                 self.demo_mode = True
@@ -564,6 +594,10 @@ class SecurityWebSystem:
                             cv2.rectangle(output, (x1, y1), (x2, y2), color, 2)
                             cv2.putText(output, f"Person {person.confidence:.0%}", 
                                        (x1, y1 - 10), cv2.FONT_HERSHEY_SIMPLEX, 0.5, color, 2)
+                            
+                            # Send Telegram alert if armed and cooldown passed
+                            if self.is_armed and self.telegram_enabled:
+                                self._send_person_alert(output, person, x1, y1, x2, y2)
                 except Exception as e:
                     logging.error(f"[PersonBoxes] Error: {e}")
             
@@ -623,6 +657,23 @@ class SecurityWebSystem:
     def toggle_arm(self, armed: bool):
         self.is_armed = armed
         logging.info(f"[System] Armed: {armed}")
+        
+        # Send notification to Telegram
+        if self.telegram_enabled:
+            try:
+                import requests
+                status = "🔒 *ARMED*" if armed else "🔓 *DISARMED*"
+                
+                url = f"{self.telegram_base_url}/sendMessage"
+                data = {
+                    'chat_id': self.telegram_chat_id,
+                    'text': f"{status}\n\n⏰ {time.strftime('%Y-%m-%d %H:%M:%S')}",
+                    'parse_mode': 'Markdown'
+                }
+                
+                requests.post(url, json=data, timeout=10)
+            except Exception as e:
+                logging.error(f"[Telegram] Status update failed: {e}")
     
     def toggle_record(self, recording: bool):
         self.is_recording = recording
@@ -666,6 +717,76 @@ class SecurityWebSystem:
     def reload_faces(self):
         if self.face_engine:
             self.face_engine.reload_faces()
+    
+    def _send_person_alert(self, frame: np.ndarray, person, x1: int, y1: int, x2: int, y2: int):
+        """Send alert to Telegram when person detected."""
+        current_time = time.time()
+        
+        # Check cooldown
+        if current_time - self.last_alert_time < self.alert_cooldown:
+            return
+        
+        try:
+            # Crop person from frame
+            person_frame = frame[y1:y2, x1:x2]
+            
+            if person_frame is None or person_frame.size == 0:
+                return
+            
+            # Save alert photo
+            ts = time.strftime("%Y%m%d_%H%M%S")
+            alert_path = f"alerts/alert_{ts}.jpg"
+            
+            # Add text overlay
+            alert_copy = person_frame.copy()
+            h_alert, w_alert = alert_copy.shape[:2]
+            
+            # Add timestamp
+            ts_text = time.strftime("%Y-%m-%d %H:%M:%S")
+            cv2.putText(alert_copy, ts_text, (10, 20), 
+                      cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 255, 255), 2)
+            
+            # Add confidence
+            conf_text = f"Confidence: {person.confidence:.0%}"
+            cv2.putText(alert_copy, conf_text, (10, 40),
+                      cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 255, 0), 2)
+            
+            # Save alert photo
+            cv2.imwrite(alert_path, alert_copy)
+            
+            # Send to Telegram
+            import requests
+            
+            caption = f"""🚨 *SECURITY ALERT*
+            
+👤 *Person Detected*
+⏰ Time: {ts_text}
+📊 Confidence: {conf_text}
+📍 Location: {self.config.CAMERA_SOURCE if self.config else 'Unknown'}
+            
+📸 Alert photo attached"""
+
+            url = f"{self.telegram_base_url}/sendPhoto"
+            
+            with open(alert_path, 'rb') as f:
+                files = {'photo': f}
+                data = {
+                    'chat_id': self.telegram_chat_id,
+                    'caption': caption,
+                    'parse_mode': 'Markdown'
+                }
+                
+                resp = requests.post(url, data=data, files=files, timeout=30)
+                
+                if resp.status_code == 200:
+                    logging.info(f"[Telegram] Person alert sent successfully")
+                    self.last_alert_time = current_time
+                    self.alert_count += 1
+                else:
+                    logging.error(f"[Telegram] Alert send failed: {resp.status_code} {resp.text}")
+            
+        except Exception as e:
+            logging.error(f"[Telegram] Alert error: {e}")
     
     def create_zone(self):
         if self.zone_manager:
