@@ -12,7 +12,7 @@ import threading
 import logging
 import sys
 import queue
-from typing import Set, Dict, Optional
+from typing import Set, Dict, Optional, Tuple
 from collections import deque
 
 # Setup logging
@@ -317,10 +317,14 @@ class SecurityWebSystem:
                 else:
                     logging.warning("[Camera] No frames from V380, falling back to demo mode")
                     self.camera_available = False
+                
+                # Initialize capture_thread as None for V380 mode
+                self.capture_thread = None
                     
             except Exception as e:
                 logging.error(f"[Camera] V380 FFmpeg Pipeline error: {e}")
                 self.camera_available = False
+                self.capture_thread = None
         else:
             # Use original OpenCV capture
             camera_source = Config.CAMERA_SOURCE if self.config else 0
@@ -366,9 +370,13 @@ class SecurityWebSystem:
     
     def start_processing(self):
         """Start processing thread."""
-        self.processing_thread = ProcessingThread(self)
-        self.processing_thread.start()
-        logging.info("[Processing] Thread started")
+        # Only start processing thread if not using V380 mode
+        if not self.use_v380_ffmpeg:
+            self.processing_thread = ProcessingThread(self)
+            self.processing_thread.start()
+            logging.info("[Processing] Thread started")
+        else:
+            logging.info("[Processing] Skipped in V380 mode (processing happens in V380Processor)")
     
     def _get_v380_frame(self) -> Optional[np.ndarray]:
         """Get processed frame from V380 FFmpeg Pipeline."""
@@ -677,12 +685,24 @@ class SecurityWebSystem:
     def stop(self):
         """Stop system."""
         self.running = False
+        
+        # Stop V380 processor if using V380 mode
+        if self.v380_processor:
+            self.v380_processor.stop()
+        
+        # Stop capture thread if exists
         if self.capture_thread:
             self.capture_thread.stop()
+        
+        # Stop processing thread if exists
         if self.processing_thread:
             self.processing_thread.stop()
+        
+        # Stop detection thread if exists
         if self.detection_thread:
             self.detection_thread.stop()
+        
+        # Stop video writer if exists
         if self.video_writer:
             self.video_writer.release()
 
@@ -821,8 +841,21 @@ class SecurityWebServer:
             try:
                 start_time = time.time()
                 
-                # Get processed frame from processing thread
-                frame = self.system.processing_thread.get_processed_frame()
+                # Get processed frame from processing thread or V380 processor
+                if self.system.use_v380_ffmpeg:
+                    # Get frame directly from V380 processor
+                    v380_frame = self.system._get_v380_frame()
+                    if v380_frame is not None:
+                        frame = v380_frame
+                    else:
+                        await asyncio.sleep(frame_interval)
+                        continue
+                else:
+                    # Get frame from processing thread
+                    if self.system.processing_thread is None:
+                        await asyncio.sleep(frame_interval)
+                        continue
+                    frame = self.system.processing_thread.get_processed_frame()
                 
                 if frame is not None:
                     # Validate frame before encoding
@@ -867,7 +900,7 @@ class SecurityWebServer:
                             except Exception as e:
                                 logging.warning(f"[Broadcast] Send error: {e}")
                         
-                        frame_count += 1
+                        frame_count +=1
                     
                     except Exception as e:
                         logging.error(f"[Broadcast] Encoding error: {e}")
