@@ -325,91 +325,151 @@ class SecurityWebSystem:
         logging.info("[Processing] Thread started")
     
     def _process_frame_internal(self, frame: np.ndarray) -> np.ndarray:
-        """Internal frame processing dengan semua fitur."""
-        if frame is None:
+        """Internal frame processing dengan semua fitur - FIXED frame corruption."""
+        try:
+            # Validate input frame
+            if frame is None or frame.size == 0:
+                return self._create_demo_frame()
+            
+            # Ensure frame is valid numpy array
+            if not isinstance(frame, np.ndarray):
+                return self._create_demo_frame()
+            
+            # Ensure correct shape and type
+            if len(frame.shape) != 3 or frame.shape[2] != 3:
+                # Convert grayscale or invalid format to BGR
+                if len(frame.shape) == 2:
+                    frame = cv2.cvtColor(frame, cv2.COLOR_GRAY2BGR)
+                else:
+                    return self._create_demo_frame()
+            
+            # Ensure uint8 type
+            if frame.dtype != np.uint8:
+                frame = frame.astype(np.uint8)
+            
+            # Get dimensions
+            h, w = frame.shape[:2]
+            
+            # Validate frame dimensions
+            if h == 0 or w == 0:
+                return self._create_demo_frame()
+            
+            # Resize only if necessary (avoid unnecessary processing)
+            target_h, target_w = 720, 1280
+            if h != target_h or w != target_w:
+                try:
+                    frame = cv2.resize(frame, (target_w, target_h), interpolation=cv2.INTER_LINEAR)
+                    h, w = target_h, target_w
+                except Exception as e:
+                    logging.error(f"[Resize] Error: {e}")
+                    return self._create_demo_frame()
+            
+            # Create output copy
+            output = frame.copy()
+            
+            # Validate output
+            if output is None or output.size == 0:
+                return self._create_demo_frame()
+            
+            # Timestamp
+            ts = time.strftime("%Y-%m-%d %H:%M:%S")
+            cv2.putText(output, ts, (10, 25), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 255, 255), 2)
+            
+            # Get detection results (non-blocking)
+            if not self.demo_mode and self.detection_thread:
+                try:
+                    results = self.detection_thread.get_results()
+                    persons = results.get('persons', []) if results else []
+                    has_motion = results.get('motion', False) if results else False
+                    motion_regions = results.get('motion_regions', []) if results else []
+                except Exception as e:
+                    logging.error(f"[Detection] Error getting results: {e}")
+                    persons = []
+                    has_motion = False
+                    motion_regions = []
+            else:
+                persons = []
+                has_motion = False
+                motion_regions = []
+            
+            self.person_count = len(persons)
+            
+            # Night vision (safe processing)
+            if self.night_vision:
+                try:
+                    gray = cv2.cvtColor(output, cv2.COLOR_BGR2GRAY)
+                    output = cv2.cvtColor(gray, cv2.COLOR_GRAY2BGR)
+                    output[:, :, 1] = np.clip(output[:, :, 1] * 1.3 + 30, 0, 255).astype(np.uint8)
+                except Exception as e:
+                    logging.error(f"[NightVision] Error: {e}")
+            
+            # Heat map (safe processing)
+            if self.enable_heatmap and self.motion_detector and not self.demo_mode:
+                try:
+                    hm = self.motion_detector.get_heat_map()
+                    if hm is not None and hm.size > 0:
+                        if hm.shape[:2] != (h, w):
+                            hm = cv2.resize(hm, (w, h))
+                        hm_color = cv2.applyColorMap(hm, cv2.COLORMAP_JET)
+                        output = cv2.addWeighted(output, 0.7, hm_color, 0.3, 0)
+                except Exception as e:
+                    logging.error(f"[Heatmap] Error: {e}")
+            
+            # Motion boxes
+            if self.enable_motion and motion_regions:
+                try:
+                    for mx1, my1, mx2, my2 in motion_regions:
+                        # Validate coordinates
+                        if mx1 >= 0 and my1 >= 0 and mx2 <= w and my2 <= h:
+                            cv2.rectangle(output, (mx1, my1), (mx2, my2), (0, 165, 255), 1)
+                except Exception as e:
+                    logging.error(f"[MotionBoxes] Error: {e}")
+            
+            # Draw persons dengan bounding boxes
+            if persons:
+                try:
+                    for person in persons:
+                        x1, y1, x2, y2 = person.bbox
+                        # Validate coordinates
+                        if x1 >= 0 and y1 >= 0 and x2 <= w and y2 <= h:
+                            color = (0, 0, 255) if self.breach_active else (0, 255, 0)
+                            cv2.rectangle(output, (x1, y1), (x2, y2), color, 2)
+                            cv2.putText(output, f"Person {person.confidence:.0%}", 
+                                       (x1, y1 - 10), cv2.FONT_HERSHEY_SIMPLEX, 0.5, color, 2)
+                except Exception as e:
+                    logging.error(f"[PersonBoxes] Error: {e}")
+            
+            # Draw zones
+            if self.zone_manager:
+                try:
+                    breached_ids = []
+                    if self.breach_active:
+                        for zone in self.zone_manager.zones:
+                            breached_ids.append(zone.zone_id)
+                    output = self.zone_manager.draw_all(output, breached_ids, self.is_armed)
+                except Exception as e:
+                    logging.error(f"[Zones] Error: {e}")
+            
+            # Recording indicator
+            if self.is_recording:
+                cv2.circle(output, (w - 25, 25), 10, (0, 0, 255), -1)
+                cv2.putText(output, "REC", (w - 65, 30), 
+                          cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 0, 255), 2)
+            
+            # Armed indicator
+            if self.is_armed:
+                cv2.putText(output, "ARMED", (w - 85, h - 15), 
+                          cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 255, 0), 2)
+            
+            # Final validation
+            if output is None or output.size == 0:
+                return self._create_demo_frame()
+            
+            return output
+            
+        except Exception as e:
+            logging.error(f"[ProcessFrame] Fatal error: {e}")
             return self._create_demo_frame()
-        
-        # Ensure BGR format
-        if len(frame.shape) == 2 or frame.shape[2] == 1:
-            frame = cv2.cvtColor(frame, cv2.COLOR_GRAY2BGR)
-        
-        # Resize jika terlalu besar atau kecil
-        h, w = frame.shape[:2]
-        if h > 720 or w > 1280 or h < 720 or w < 1280:
-            # Always ensure V380 standard resolution for split frame detection
-            frame = cv2.resize(frame, (1280, 720), interpolation=cv2.INTER_LINEAR)
-            h, w = 720, 1280  # Fix: (height, width) not (width, height)
-        
-        output = frame.copy()
-        
-        # Timestamp
-        ts = time.strftime("%Y-%m-%d %H:%M:%S")
-        cv2.putText(output, ts, (10, 25), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 255, 255), 2)
-        
-        # Get detection results
-        if not self.demo_mode and self.detection_thread:
-            results = self.detection_thread.get_results()
-            persons = results.get('persons', [])
-            has_motion = results.get('motion', False)
-            motion_regions = results.get('motion_regions', [])
-        else:
-            persons = []
-            has_motion = False
-            motion_regions = []
-        
-        self.person_count = len(persons)
-        
-        # Night vision
-        if self.night_vision:
-            gray = cv2.cvtColor(output, cv2.COLOR_BGR2GRAY)
-            output = cv2.cvtColor(gray, cv2.COLOR_GRAY2BGR)
-            output[:, :, 1] = np.clip(output[:, :, 1] * 1.3 + 30, 0, 255).astype(np.uint8)
-        
-        # Heat map
-        if self.enable_heatmap and self.motion_detector and not self.demo_mode:
-            try:
-                hm = self.motion_detector.get_heat_map()
-                if hm is not None:
-                    if hm.shape[:2] != (h, w):
-                        hm = cv2.resize(hm, (w, h))
-                    hm_color = cv2.applyColorMap(hm, cv2.COLORMAP_JET)
-                    output = cv2.addWeighted(output, 0.7, hm_color, 0.3, 0)
-            except Exception as e:
-                logging.error(f"[Heatmap] Error: {e}")
-        
-        # Motion boxes
-        if self.enable_motion:
-            for mx1, my1, mx2, my2 in motion_regions:
-                cv2.rectangle(output, (mx1, my1), (mx2, my2), (0, 165, 255), 1)
-        
-        # Draw persons dengan bounding boxes
-        for person in persons:
-            x1, y1, x2, y2 = person.bbox
-            color = (0, 0, 255) if self.breach_active else (0, 255, 0)
-            cv2.rectangle(output, (x1, y1), (x2, y2), color, 2)
-            cv2.putText(output, f"Person {person.confidence:.0%}", 
-                       (x1, y1 - 10), cv2.FONT_HERSHEY_SIMPLEX, 0.5, color, 2)
-        
-        # Draw zones
-        if self.zone_manager:
-            breached_ids = []
-            if self.breach_active:
-                for zone in self.zone_manager.zones:
-                    breached_ids.append(zone.zone_id)
-            output = self.zone_manager.draw_all(output, breached_ids, self.is_armed)
-        
-        # Recording indicator
-        if self.is_recording:
-            cv2.circle(output, (w - 25, 25), 10, (0, 0, 255), -1)
-            cv2.putText(output, "REC", (w - 65, 30), 
-                      cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 0, 255), 2)
-        
-        # Armed indicator
-        if self.is_armed:
-            cv2.putText(output, "ARMED", (w - 85, h - 15), 
-                      cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 255, 0), 2)
-        
-        return output
     
     def _create_demo_frame(self):
         """Create demo frame."""
@@ -576,10 +636,10 @@ class SecurityWebServer:
         elif cmd_type == 'snapshot':
             snapshot = self.system.take_snapshot()
             if snapshot:
-                    await websocket.send(json.dumps({
-                        'type': 'snapshot',
-                        'data': snapshot
-                    }))
+                await websocket.send(json.dumps({
+                    'type': 'snapshot',
+                    'data': snapshot
+                }))
         
         elif cmd_type == 'set_confidence':
             self.system.set_confidence(data.get('value', 0.25))
