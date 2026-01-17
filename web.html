@@ -1525,7 +1525,9 @@
         
         function sendCommand(type, data = {}) {
             if (ws && ws.readyState === WebSocket.OPEN) {
-                ws.send(JSON.stringify({ type, ...data }));
+                const command = { type, ...data };
+                console.log('[WebSocket] Sending command:', command);
+                ws.send(JSON.stringify(command));
             } else {
                 addLog('Not connected to server', 'error');
             }
@@ -1644,6 +1646,7 @@
         }
         
         function createZone() {
+            console.log('[Zone] Creating new zone...');
             sendCommand('create_zone');
             addLog('New zone created', 'success');
         }
@@ -1677,6 +1680,7 @@
             console.log(`[Zone] Click position: canvas=${canvasWidth}x${canvasHeight}, display=${rect.width.toFixed(0)}x${rect.height.toFixed(0)}, scale=${scaleX.toFixed(2)}x${scaleY.toFixed(2)}, point=(${x}, ${y})`);
             
             sendCommand('add_zone_point', { x, y });
+            console.log('[Zone] Sent zone point command to server');
             zonePoints.push({ x, y });
             
             // Draw point on canvas
