@@ -1084,7 +1084,7 @@ class FaceRecognitionEngine:
 
 
 class MotionDetector:
-    """Motion detection with heat map and zone awareness."""
+    """Motion detection with heat map and zone awareness - Enhanced for better accuracy."""
     
     def __init__(self, config: Config):
         self.config = config
@@ -1093,6 +1093,9 @@ class MotionDetector:
         self.frame_size = None
         self.threshold = config.MOTION_THRESHOLD
         self.min_area = config.MOTION_MIN_AREA
+        self.motion_history = deque(maxlen=5)  # Track recent motion frames
+        self.motion_active = False
+        self.last_motion_time = 0
     
     def set_sensitivity(self, sensitivity: Sensitivity):
         settings = Config.get_sensitivity_settings(sensitivity)
@@ -1106,7 +1109,10 @@ class MotionDetector:
         h, w = frame.shape[:2]
         size = (w, h)
         
+        # Convert to grayscale
         gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
+        
+        # Apply Gaussian blur to reduce noise
         gray = cv2.GaussianBlur(gray, (21, 21), 0)
         
         # Initialize or reset if size changed
@@ -1114,19 +1120,22 @@ class MotionDetector:
             self.prev_frame = gray
             self.heat_map = np.zeros((h, w), dtype=np.float32)
             self.frame_size = size
+            self.motion_history.clear()
             return False, []
         
+        # Calculate absolute difference
         delta = cv2.absdiff(self.prev_frame, gray)
+        
+        # Apply threshold - more sensitive lower threshold
         thresh = cv2.threshold(delta, self.threshold, 255, cv2.THRESH_BINARY)[1]
+        
+        # Dilate to fill in holes and make motion regions more continuous
         thresh = cv2.dilate(thresh, None, iterations=2)
         
-        # Update heat map with decay
-        self.heat_map = self.heat_map * 0.9 + thresh.astype(np.float32) * 0.1
-        
-        self.prev_frame = gray
-        
+        # Find contours
         contours, _ = cv2.findContours(thresh, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
         
+        # Filter contours by area and create motion regions
         regions = []
         has_motion = False
         
@@ -1135,9 +1144,29 @@ class MotionDetector:
             if area > self.min_area:
                 has_motion = True
                 x, y, cw, ch = cv2.boundingRect(cnt)
-                regions.append((x, y, x + cw, y + ch))
+                
+                # Filter out very narrow regions (likely noise)
+                aspect_ratio = cw / ch if ch > 0 else 0
+                if aspect_ratio > 0.1 and aspect_ratio < 10:  # Reasonable aspect ratio
+                    regions.append((x, y, x + cw, y + ch))
         
-        return has_motion, regions
+        # Update heat map with decay
+        if has_motion:
+            self.heat_map = self.heat_map * 0.85 + thresh.astype(np.float32) * 0.15
+            self.last_motion_time = time.time()
+            self.motion_history.append(True)
+        else:
+            self.heat_map = self.heat_map * 0.95  # Faster decay when no motion
+            self.motion_history.append(False)
+        
+        # Update previous frame
+        self.prev_frame = gray
+        
+        # Determine if motion is active (based on recent history)
+        recent_motion_count = sum(1 for m in self.motion_history if m)
+        self.motion_active = recent_motion_count >= 2  # Motion if 2+ frames in last 5
+        
+        return self.motion_active, regions
     
     def get_heat_map(self) -> Optional[np.ndarray]:
         """Get motion heat map."""

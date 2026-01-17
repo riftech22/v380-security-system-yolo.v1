@@ -164,6 +164,7 @@ class ProcessingThread:
         self.thread = None
         self.processed_frame = None
         self.lock = threading.Lock()
+        self.frame_skip = 0  # Skip frames to reduce load
     
     def start(self):
         """Start processing thread."""
@@ -173,24 +174,28 @@ class ProcessingThread:
         logging.info("[Processing] Thread started")
     
     def _process_loop(self):
-        """Processing loop - runs continuously."""
+        """Processing loop - runs continuously with frame skipping."""
         while self.running:
             try:
                 frame = self.system.capture_thread.get_frame()
                 
                 if frame is not None:
-                    # Submit frame to detection thread
-                    if self.system.detection_thread:
-                        self.system.detection_thread.submit(frame)
+                    # Frame skipping to reduce CPU load (process every 3rd frame)
+                    self.frame_skip = (self.frame_skip + 1) % 3
                     
-                    # Process frame with all features
+                    if self.frame_skip == 0:
+                        # Submit frame to detection thread only on non-skipped frames
+                        if self.system.detection_thread:
+                            self.system.detection_thread.submit(frame)
+                    
+                    # Always process frame (even if skipping detection)
                     processed = self.system._process_frame_internal(frame)
                     
                     with self.lock:
                         self.processed_frame = processed
                 
                 # Small sleep to prevent CPU overload
-                time.sleep(0.001)
+                time.sleep(0.005)
             
             except Exception as e:
                 logging.error(f"[Processing] Error: {e}")

@@ -50,14 +50,16 @@ class Config:
     FRAME_HEIGHT = 720
     TARGET_FPS = 30
     
-    YOLO_CONFIDENCE = 0.25
+    # YOLO Person Detection - Lowered for better sensitivity
+    YOLO_CONFIDENCE = 0.20  # Reduced from 0.25 for better person detection
     SKELETON_CONFIDENCE = 0.5
     
     FACE_MATCH_TOLERANCE = 0.6
     FACE_DETECTION_SCALE = 0.25
     
-    MOTION_THRESHOLD = 20
-    MOTION_MIN_AREA = 300
+    # Motion Detection - More sensitive settings
+    MOTION_THRESHOLD = 15  # Reduced from 20 for better motion detection
+    MOTION_MIN_AREA = 200  # Reduced from 300 for more responsive motion
     
     INTRUDER_UPDATE_INTERVAL = 6.0
     ZONE_CLEAR_DELAY = 5.0
