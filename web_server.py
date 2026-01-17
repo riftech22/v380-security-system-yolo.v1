@@ -695,8 +695,67 @@ class SecurityWebSystem:
                 logging.error(f"[Telegram] Status update failed: {e}")
     
     def toggle_record(self, recording: bool):
-        self.is_recording = recording
-        logging.info(f"[Record] Recording: {recording}")
+        """Toggle video recording - implements actual file recording."""
+        if recording and not self.is_recording:
+            # Start recording
+            logging.info("[Record] Starting recording...")
+            try:
+                # Create recordings directory
+                import os
+                os.makedirs('recordings', exist_ok=True)
+                
+                # Generate filename with timestamp
+                ts = time.strftime("%Y%m%d_%H%M%S")
+                filename = f"recordings/recording_{ts}.avi"
+                
+                # Get current frame to determine dimensions
+                frame = None
+                if self.use_v380_ffmpeg:
+                    frame = self._get_v380_frame()
+                elif self.processing_thread:
+                    frame = self.processing_thread.get_processed_frame()
+                elif self.capture_thread:
+                    frame = self.capture_thread.get_frame()
+                
+                if frame is None or frame.size == 0:
+                    logging.warning("[Record] No frame available, using demo frame for initialization")
+                    frame = self._create_demo_frame()
+                
+                # Get frame dimensions
+                h, w = frame.shape[:2]
+                
+                # Initialize video writer
+                fourcc = cv2.VideoWriter_fourcc(*'XVID')
+                self.video_writer = cv2.VideoWriter(filename, fourcc, 30.0, (w, h))
+                
+                if not self.video_writer.isOpened():
+                    logging.error("[Record] Failed to initialize video writer")
+                    self.is_recording = False
+                    return
+                
+                self.is_recording = True
+                self.recording_filename = filename
+                logging.info(f"[Record] Recording started: {filename}")
+                
+            except Exception as e:
+                logging.error(f"[Record] Error starting recording: {e}")
+                self.is_recording = False
+                
+        elif not recording and self.is_recording:
+            # Stop recording
+            logging.info("[Record] Stopping recording...")
+            try:
+                if self.video_writer:
+                    self.video_writer.release()
+                    self.video_writer = None
+                    logging.info(f"[Record] Recording stopped: {self.recording_filename}")
+                    self.recording_filename = None
+            except Exception as e:
+                logging.error(f"[Record] Error stopping recording: {e}")
+            
+            self.is_recording = False
+        
+        logging.info(f"[Record] Recording: {self.is_recording}")
     
     def toggle_mute(self, muted: bool):
         self.is_muted = muted
@@ -1254,6 +1313,13 @@ class SecurityWebServer:
                     # Ensure BGR format
                     if len(frame.shape) == 2 or frame.shape[2] == 1:
                         frame = cv2.cvtColor(frame, cv2.COLOR_GRAY2BGR)
+                    
+                    # Write frame to video if recording
+                    if self.system.is_recording and self.system.video_writer is not None:
+                        try:
+                            self.system.video_writer.write(frame)
+                        except Exception as e:
+                            logging.error(f"[Record] Error writing frame: {e}")
                     
                     # Optimized encoding with error handling
                     try:
