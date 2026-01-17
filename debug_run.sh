@@ -56,9 +56,21 @@ echo "[4/4] Starting server in DEBUG mode..."
 echo "      This will show ALL output in this terminal"
 echo "      Press Ctrl+C to stop"
 echo ""
-echo "╔═════════════════════════════════════════════════════════════╗"
+
+# Activate virtual environment
+echo "      Activating virtual environment..."
+if [ -f "venv/bin/activate" ]; then
+    source venv/bin/activate
+    echo "      ✓ Virtual environment activated"
+    echo "      Python: $(which python3)"
+else
+    echo "      ⚠️  Virtual environment not found, using system Python"
+fi
+echo ""
+
+echo "╔═══════════════════════════════════════════════════════════╗"
 echo "║           🚀 STARTING WEBSOCKET SERVER                         ║"
-echo "╚═════════════════════════════════════════════════════════════╝"
+echo "╚═══════════════════════════════════════════════════════════╝"
 echo ""
 
 # Run in foreground with all output visible
