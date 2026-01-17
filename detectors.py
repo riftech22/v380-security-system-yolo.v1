@@ -5,6 +5,7 @@ import cv2
 import numpy as np
 from typing import List, Tuple, Optional
 from dataclasses import dataclass, field
+from collections import deque
 import threading
 from queue import Queue, Empty
 import shutil
