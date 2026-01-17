@@ -1,50 +1,18 @@
-╔═══════════════════════════════════════════════════════════════════════════════╗
-║                                                                               ║
-║   ▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄   ║
-║   ██▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀██   ║
-║   ██  ███████████████████████████████████████████████████████████████  ██   ║
-║   ██  ██▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀██  ██   ║
-║   ██  ██     ╔════════════════════════════════════════════════════╗██  ██   ║
-║   ██  ██     ║  RIFTECH CAM SECURITY                        ║██  ██   ║
-║   ██  ██     ║  Advanced AI-Powered Security System            ║██  ██   ║
-║   ██  ██     ║                                               ║██  ██   ║
-║   ██  ██     ╚════════════════════════════════════════════════════╝██  ██   ║
-║   ██  ▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄██  ██   ║
-║   ██▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄   ║
-║                                                                               ║
-╚══════════════════ Detection & Monitoring System ══════════════════════════════════╝
-```
+# 🔐 Riftech Cam Security System
+
+**AI-Powered Security System with V380 Dual-Lens Camera Support**
 
 <div align="center">
 
-![Version](https://img.shields.io/badge/version-1.0.0-brightgreen.svg)
+![Version](https://img.shields.io/badge/version-2.0.0-brightgreen.svg)
 ![Python](https://img.shields.io/badge/python-3.8%2B-blue.svg)
 ![License](https://img.shields.io/badge/license-MIT-blue.svg)
-![Platform](https://img.shields.io/badge/platform-Linux%20%7C%20Windows-lightgrey.svg)
-![Status](https://img.shields.io/badge/status-active-success.svg)
+![Platform](https://img.shields.io/badge/platform-Linux-lightgrey.svg)
+![Status](https://img.shields.io/badge/status-production-success.svg)
 
-**AI-Powered Security Camera System with Real-Time Detection & Web Interface**
+**Advanced AI-powered security camera system with real-time detection, web interface, and V380 dual-lens support**
 
 </div>
-
----
-
-## 🚀 Quick Start
-
-```bash
-# Clone repository
-git clone https://github.com/riftech22/riftech-cam-security.git
-cd riftech-cam-security
-
-# Install dependencies
-pip install -r requirements.txt
-
-# Start web interface
-./start_web.sh
-
-# Access in browser
-# http://localhost:8080/web.html
-```
 
 ---
 
@@ -57,6 +25,12 @@ pip install -r requirements.txt
 - **Skeleton Detection** - 33-point pose tracking
 - **Heat Map** - Motion visualization
 - **Night Vision** - Enhanced low-light mode
+
+### 📹 V380 Dual-Lens Support
+- **Split Frame Processing** - Automatically handle V380's vertical stacked dual-lens
+- **FFmpeg Pipeline** - Real-time RTSP stream processing
+- **Optimized YOLO** - Detection works perfectly on split frames
+- **No Confusion** - AI correctly detects objects in both lenses
 
 ### 🌐 Web Interface
 - **Real-time Streaming** - 30 FPS via WebSocket
@@ -74,48 +48,173 @@ pip install -r requirements.txt
 - **Audio Alerts** - Custom alarm sounds
 - **Recording** - Save evidence automatically
 
-### 📊 Statistics & Logging
-- **Real-time FPS** - Performance monitoring
-- **Activity Logs** - Detailed event tracking
-- **Alert History** - Database storage
-- **Breach Duration** - Timed alerts
-- **Client Tracking** - Multi-user support
+### 🚀 Auto-Start (Systemd)
+- **Auto-start on boot** - Services start automatically
+- **Auto-restart** - Restart on crash (10 second delay)
+- **Centralized logging** - Systemd journal + file logs
+- **Easy management** - Simple systemctl commands
 
 ---
 
-## 🎨 Cyberpunk Web Interface
+## 🚀 Quick Start
 
-```
-┌─────────────────────────────────────────────────────────────────────────────┐
-│  ███╗   ██╗███████╗██╗  ██╗██╗   ██╗███████╗                          │
-│  ████╗  ██║██╔════╝╚██╗██╔╝██║   ██║██╔════╝                          │
-│  ██╔██╗ ██║█████╗   ╚███╔╝ ██║   ██║███████╗                          │
-│  ██║╚██╗██║██╔══╝   ██╔██╗ ██║   ██║╚════██║                          │
-│  ██║ ╚████║███████╗██╔╝ ██╗╚██████╔╝███████║                          │
-│  ╚═╝  ╚═══╝╚══════╝╚═╝  ╚═╝ ╚═════╝ ╚══════╝                          │
-│                                                                       │
-│  ┌────────────────────────────────────────────────────────────────────────┐   │
-│  │  📡 Connection: ● CONNECTED                                       │   │
-│  │  👤 Persons: 2                                                  │   │
-│  │  🚨 Alerts: 0                                                   │   │
-│  │  ⏱️ FPS: 30                                                      │   │
-│  └────────────────────────────────────────────────────────────────────────┘   │
-│                                                                       │
-│  ╔═══════════════════════════════════════════════════════════════╗   │
-│  ║                     VIDEO STREAM                               ║   │
-│  ║                                                               ║   │
-│  ║  [Real-time camera feed with detection boxes & zones]              ║   │
-│  ║                                                               ║   │
-│  ╚═══════════════════════════════════════════════════════════════╝   │
-│                                                                       │
-│  ╔═════════╗ ╔═════════╗ ╔═════════╗ ╔═════════╗               │
-│  ║ ARM     ║ ║ RECORD   ║ ║ SNAPSHOT ║ ║ MUTE    ║               │
-│  ╚═════════╝ ╚═════════╝ ╚═════════╝ ╚═════════╝               │
-│                                                                       │
-└─────────────────────────────────────────────────────────────────────────────┘
+### Prerequisites
+
+```bash
+# Ubuntu/Debian
+sudo apt update
+sudo apt install -y python3 python3-pip python3-venv python3-dev
+sudo apt install -y ffmpeg libopencv-dev libavcodec-dev libavformat-dev libswscale-dev
 ```
 
-### 🎮 Control Panel Features
+### Installation
+
+```bash
+# 1. Clone repository
+git clone https://github.com/riftech22/riftech-cam-security.git
+cd riftech-cam-security
+
+# 2. Create virtual environment
+python3 -m venv venv
+source venv/bin/activate
+
+# 3. Install dependencies
+pip install --upgrade pip
+pip install -r requirements.txt
+
+# 4. Configure V380 camera
+cp config.example.py config.py
+nano config.py  # Edit RTSP_URL and other settings
+```
+
+### Start System
+
+**Option 1: Manual Start**
+```bash
+# Start both servers
+./start_both_servers.sh
+
+# Access web interface
+# http://YOUR_IP:8080/web.html
+```
+
+**Option 2: Auto-Start (Recommended)**
+```bash
+# Install systemd services
+sudo ./install_services.sh
+
+# Services will auto-start on boot!
+```
+
+---
+
+## 📹 V380 Dual-Lens Setup
+
+### What is V380 Dual-Lens?
+
+V380 dual-lens cameras have **two sensors** stacked vertically in a single frame:
+
+```
+┌─────────────────────────────────────┐
+│         LENS ATAS (Fixed)           │  ← Wide angle monitoring
+│         0 to 360px                 │
+├─────────────────────────────────────┤
+│         LENS BAWAH (PTZ)            │  ← Pan-tilt-zoom
+│        360 to 720px                │
+└─────────────────────────────────────┘
+```
+
+### How It Works
+
+The system uses **FFmpeg pipeline** to:
+1. Capture RTSP stream from V380 camera
+2. **Automatically split** the frame into two parts
+3. **Process each part separately** with YOLO
+4. **Merge detections** from both lenses
+5. **Stream to web interface** with proper visualization
+
+### Configure V380 Camera
+
+Edit `config.py`:
+
+```python
+# V380 RTSP URL
+RTSP_URL = "rtsp://admin:password@IP:554/h264/ch1/main/av_stream"
+
+# Model settings
+MODEL_NAME = 'yolov8s.pt'  # Use small model for better accuracy
+CONFIDENCE = 0.25  # 25% confidence threshold
+
+# V380 mode (IMPORTANT!)
+V380_MODE = True  # Enable V380 split frame processing
+```
+
+### Example RTSP URL for V380
+
+```python
+# Format: rtsp://USERNAME:PASSWORD@CAMERA_IP:PORT/PATH
+RTSP_URL = "rtsp://admin:Kuncong203@10.26.27.196:554/h264/ch1/main/av_stream"
+```
+
+---
+
+## 📁 Project Structure
+
+```
+riftech-cam-security/
+│
+├── 📄 README.md                      # Main documentation
+├── 📄 SERVICES_README.md            # Systemd services documentation
+├── 📄 requirements.txt              # Python dependencies
+│
+├── 🐍 web_server.py                # WebSocket server + V380 pipeline
+├── 🐍 http_server.py               # HTTP server for web interface
+├── 🐍 v380_ffmpeg_pipeline.py      # V380 FFmpeg processing
+├── 🐍 config.py                    # Configuration
+├── 🐍 detectors.py                 # Detection modules
+├── 🐍 database.py                  # Database manager
+├── 🐍 telegram_bot.py              # Telegram integration
+├── 🐍 audio.py                     # Audio system
+├── 🐍 utils.py                     # Utilities
+│
+├── 🌐 web.html                     # Single-file web interface
+│
+├── 🚀 start_both_servers.sh         # Start HTTP + WebSocket
+├── 🛑 stop_both_servers.sh          # Stop both servers
+├── ⚙️  install_services.sh          # Install systemd services
+│
+├── 📜 security-system-v380.service # WebSocket systemd service
+├── 📜 http-server.service          # HTTP systemd service
+│
+├── 📂 recordings/                  # Saved videos
+├── 📂 snapshots/                   # Screenshots
+├── 📂 alerts/                      # Alert photos
+├── 📂 trusted_faces/               # Trusted person photos
+├── 📂 logs/                        # System logs
+│
+├── 📂 audio/                       # Audio files
+│   └── alarm.wav
+│
+└── 🐁 venv/                       # Virtual environment
+```
+
+---
+
+## 🎮 Web Interface Guide
+
+### Access
+
+```bash
+# Start servers
+./start_both_servers.sh
+
+# Open in browser
+http://YOUR_IP:8080/web.html
+```
+
+### Features
+
+#### Control Panel
 - **🔒 ARM SYSTEM** - Activate/deactivate monitoring
 - **⏺ RECORD** - Start/stop video recording
 - **📸 SNAPSHOT** - Capture screenshot
@@ -132,391 +231,72 @@ pip install -r requirements.txt
 - **🗑️ CLEAR** - Remove all zones
 - **🔄 RELOAD FACES** - Update trusted faces
 
----
+### Creating Security Zones
 
-## 📦 Installation Guide
+1. Click **NEW ZONE** button
+2. Click **DRAW** to enter drawing mode
+3. Click 3+ points on video feed to create polygon
+4. Click **DRAW** again to complete zone
+5. Click **ARM SYSTEM** to activate monitoring
 
-### Prerequisites
+### Face Recognition Setup
 
-#### Ubuntu/Debian
-```bash
-# Update system
-sudo apt update && sudo apt upgrade -y
-
-# Install Python and pip
-sudo apt install -y python3 python3-pip python3-venv python3-dev
-
-# Install OpenCV dependencies
-sudo apt install -y \
-    libopencv-dev \
-    libavcodec-dev \
-    libavformat-dev \
-    libswscale-dev \
-    libv4l-dev \
-    libjpeg-dev \
-    libpng-dev \
-    libtiff-dev \
-    libatlas-base-dev \
-    cmake \
-    g++
-
-# Install OpenGL libraries (REQUIRED for OpenCV)
-sudo apt install -y \
-    libgl1 \
-    libglib2.0-0 \
-    libsm6 \
-    libxext6 \
-    libxrender-dev \
-    libgomp1
-
-# Install additional dependencies
-sudo apt install -y \
-    libopenblas-dev \
-    liblapack-dev \
-    libx11-dev \
-    libgtk-3-dev \
-    libboost-python-dev \
-    libboost-all-dev \
-    wget \
-    curl
-```
-
-#### Windows
-```bash
-# Install Python 3.8+ from https://python.org
-# Install Visual C++ Build Tools
-# Download and install OpenCV from https://opencv.org/releases/
-```
-
-#### macOS
-```bash
-# Install Homebrew
-/bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
-
-# Install Python and OpenCV
-brew install python@3.10 opencv
-```
-
----
-
-### Step-by-Step Installation
-
-#### 1️⃣ Clone Repository
-```bash
-cd ~
-git clone https://github.com/riftech22/riftech-cam-security.git
-cd riftech-cam-security
-```
-
-#### 2️⃣ Create Virtual Environment
-```bash
-# Create virtual environment
-python3 -m venv venv
-
-# Activate virtual environment
-source venv/bin/activate  # Linux/macOS
-# OR
-venv\Scripts\activate  # Windows
-```
-
-#### 3️⃣ Install Python Dependencies
-```bash
-# Upgrade pip
-pip install --upgrade pip
-
-# Install required packages
-pip install -r requirements.txt
-
-# Install additional web packages
-pip install websockets
-
-# Install PyTorch (CPU version)
-pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cpu
-
-# Install YOLOv8
-pip install ultralytics
-```
-
-#### 4️⃣ Verify Installation
-```bash
-# Check Python version
-python --version  # Should be 3.8+
-
-# Check OpenCV
-python -c "import cv2; print(f'OpenCV: {cv2.__version__}')"
-
-# Check PyTorch
-python -c "import torch; print(f'PyTorch: {torch.__version__}')"
-
-# Check YOLO
-python -c "from ultralytics import YOLO; print('YOLOv8: OK')"
-
-# Check websockets
-python -c "import websockets; print('WebSockets: OK')"
-```
-
-#### 5️⃣ Download AI Models (Automatic)
-```bash
-# Models will be downloaded automatically on first run
-# Or download manually:
-python -c "from ultralytics import YOLO; YOLO('yolov8n.pt')"
-python -c "from ultralytics import YOLO; YOLO('yolov8s.pt')"
-python -c "from ultralytics import YOLO; YOLO('yolov8m.pt')"
-```
-
-#### 6️⃣ Setup Trusted Faces (Optional)
-```bash
-# Create trusted faces directory
-mkdir -p trusted_faces
-
-# Copy your photos
-cp your_photo.jpg trusted_faces/
-cp friend_photo.jpg trusted_faces/
-
-# Faces will be loaded automatically
-```
-
----
-
-## 🚀 Running the System
-
-### Option 1: Web Interface (Recommended)
-
-```bash
-# Make script executable
-chmod +x start_web.sh
-
-# Start web interface
-./start_web.sh
-
-# Access in browser
-# http://localhost:8080/web.html
-# OR
-# http://YOUR_IP:8080/web.html
-```
-
-**Output:**
-```
-=== Starting Riftech Cam Security Web Interface ===
-Cleaning up existing processes...
-Starting WebSocket server...
-[Server] Starting Security System...
-[Camera] Connected to camera 0
-[Detection] Loading modules...
-[Detection] Modules loaded
-[Server] WebSocket server started on ws://0.0.0.0:8765
-[Server] Access web interface at: http://YOUR_IP:8080
-Starting HTTP server on port 8080...
-
-=== Riftech Cam Security Web Interface Running Successfully! ===
-
-Access URL: http://10.26.27.187:8080/web.html
-WebSocket: ws://10.26.27.187:8765
-
-Server PIDs:
-  WebSocket Server: 12345
-  HTTP Server: 12346
-
-Press Ctrl+C to stop all servers
-```
-
-### Option 2: GUI Desktop Application
-
-```bash
-# Start GUI (requires X11/Wayland)
-python main.py
-```
-
-### Option 3: Background Service (Auto-start on boot)
-
-#### Create Systemd Service
-
-```bash
-# Edit service file
-nano security-system-web.service
-```
-
-**Content:**
-```ini
-[Unit]
-Description=Riftech Cam Security Web Interface
-After=network.target
-
-[Service]
-Type=simple
-User=YOUR_USERNAME
-WorkingDirectory=/home/YOUR_USERNAME/riftech-cam-security
-Environment="PATH=/home/YOUR_USERNAME/riftech-cam-security/venv/bin"
-ExecStart=/home/YOUR_USERNAME/riftech-cam-security/start_web.sh
-Restart=always
-RestartSec=10
-
-[Install]
-WantedBy=multi-user.target
-```
-
-#### Install and Enable Service
-
-```bash
-# Replace YOUR_USERNAME with your actual username
-sed -i 's/YOUR_USERNAME/riftech/g' security-system-web.service
-
-# Copy to systemd
-sudo cp security-system-web.service /etc/systemd/system/
-
-# Reload systemd
-sudo systemctl daemon-reload
-
-# Enable auto-start on boot
-sudo systemctl enable security-system-web
-
-# Start service
-sudo systemctl start security-system-web
-
-# Check status
-sudo systemctl status security-system-web
-
-# View logs
-sudo journalctl -u security-system-web -f
-```
-
-#### Service Management
-
-```bash
-# Start service
-sudo systemctl start security-system-web
-
-# Stop service
-sudo systemctl stop security-system-web
-
-# Restart service
-sudo systemctl restart security-system-web
-
-# Check status
-sudo systemctl status security-system-web
-
-# View logs
-sudo journalctl -u security-system-web -n 100
-sudo journalctl -u security-system-web -f  # Follow logs
-```
-
----
-
-## 🌐 Accessing the Web Interface
-
-### Local Access
-```
-http://localhost:8080/web.html
-```
-
-### Network Access
-```bash
-# Find your IP
-hostname -I
-
-# Access from other devices
-http://YOUR_IP:8080/web.html
-
-# Example:
-http://192.168.1.100:8080/web.html
-http://10.0.0.5:8080/web.html
-```
-
-### Firewall Configuration
-
-```bash
-# Allow HTTP port
-sudo ufw allow 8080/tcp
-
-# Allow WebSocket port
-sudo ufw allow 8765/tcp
-
-# Enable firewall
-sudo ufw enable
-
-# Check status
-sudo ufw status
-```
-
-### Remote Access (VPN/Port Forwarding)
-
-For remote access, you can use:
-- **VPN** - Connect to your home network
-- **SSH Tunnel** - `ssh -L 8080:localhost:8080 user@server`
-- **Port Forwarding** - Forward ports on your router
-- **Cloudflare Tunnel** - Secure remote access
-
----
-
-## 🎮 Using the System
-
-### First Time Setup
-
-1. **Open Web Interface**
-   - Navigate to `http://YOUR_IP:8080/web.html`
-   - Wait for connection to establish (green indicator)
-
-2. **Test Camera**
-   - Verify video feed is showing
-   - Check FPS counter (should be 25-30)
-   - Test detection by moving in front of camera
-
-3. **Create Security Zone**
-   - Click "NEW ZONE"
-   - Click "DRAW" to enter drawing mode
-   - Click 3+ points on video feed to create polygon
-   - Click "DRAW" again to complete
-
-4. **ARM System**
-   - Click "ARM SYSTEM" button
-   - Zone will turn cyan when armed
-   - System is now monitoring!
-
-5. **Test Detection**
-   - Walk into zone
-   - Alarm should trigger (red zone)
-   - Take snapshot to verify
-
-### Advanced Features
-
-#### Face Recognition Setup
 ```bash
 # Add photos to trusted_faces folder
-cd ~/riftech-cam-security/trusted_faces
-cp photo1.jpg .
-cp photo2.jpg .
+cp photo1.jpg trusted_faces/
+cp photo2.jpg trusted_faces/
 
 # Reload from web interface
 # Click "RELOAD FACES" button
-
-# Test: Walk in front of camera
-# If recognized, alarm will NOT trigger
 ```
 
-#### Telegram Bot Setup
+---
+
+## 🚀 Systemd Services (Auto-Start)
+
+### Install Services
+
 ```bash
-# Edit config.py
-nano config.py
-
-# Add your bot token and chat ID
-TELEGRAM_BOT_TOKEN = "your_bot_token"
-TELEGRAM_CHAT_ID = "your_chat_id"
-
-# Restart system
-./start_web.sh
+# Run installation script
+sudo ./install_services.sh
 ```
 
-#### Recording Setup
+This will:
+1. ✅ Check all requirements
+2. ✅ Create logs directory
+3. ✅ Copy service files to `/etc/systemd/system/`
+4. ✅ Enable services for auto-start on boot
+5. ✅ Start services
+6. ✅ Check status
+
+### Service Management
+
 ```bash
-# Create recordings directory
-mkdir -p recordings
+# Check status
+sudo systemctl status security-system-v380
+sudo systemctl status http-server
 
-# Start recording from web interface
-# Click "RECORD" button
+# Start/Stop/Restart
+sudo systemctl restart security-system-v380
+sudo systemctl restart http-server
 
-# Videos saved to:
-# ~/riftech-cam-security/recordings/rec_YYYYMMDD_HHMMSS.avi
+# View logs
+sudo journalctl -u security-system-v380 -f
+sudo journalctl -u http-server -f
 ```
+
+### Service Files
+
+**security-system-v380.service** - WebSocket server with V380 support
+- **Port**: 8765 (WebSocket)
+- **Mode**: V380 FFmpeg
+- **Auto-restart**: Yes (10 second delay)
+
+**http-server.service** - HTTP server for web interface
+- **Port**: 8080 (HTTP)
+- **Auto-restart**: Yes (10 second delay)
+
+For detailed documentation, see `SERVICES_README.md`.
 
 ---
 
@@ -531,7 +311,7 @@ mkdir -p recordings
 
 **YOLO Models:**
 - **Nano (yolov8n.pt)** - Fastest, lightweight (~6MB)
-- **Small (yolov8s.pt)** - Balanced speed/accuracy (~22MB)
+- **Small (yolov8s.pt)** - Balanced speed/accuracy (~22MB) **[Recommended for V380]**
 - **Medium (yolov8m.pt)** - Most accurate (~50MB)
 
 ### Performance Tuning
@@ -539,198 +319,74 @@ mkdir -p recordings
 **For Low-End Systems (512MB RAM):**
 ```python
 # Use Nano model
-model_name = 'yolov8n.pt'
+MODEL_NAME = 'yolov8n.pt'
 
-# Reduce confidence
-confidence = 0.40  # 40%
+# Increase confidence
+CONFIDENCE = 0.40  # 40%
 
 # Disable features
-enable_skeleton = False
-enable_heatmap = False
+ENABLE_SKELETON = False
+ENABLE_HEATMAP = False
 ```
 
 **For High-End Systems (4GB+ RAM):**
 ```python
-# Use Medium model
-model_name = 'yolov8m.pt'
+# Use Small or Medium model
+MODEL_NAME = 'yolov8s.pt'  # or 'yolov8m.pt'
 
-# Increase confidence
-confidence = 0.20  # 20%
+# Lower confidence
+CONFIDENCE = 0.20  # 20%
 
 # Enable features
-enable_skeleton = True
-enable_heatmap = True
-```
-
-### GPU Acceleration
-
-```bash
-# Check if CUDA available
-python -c "import torch; print(torch.cuda.is_available())"
-
-# Install GPU version of PyTorch
-pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu118
-
-# Restart system for GPU acceleration
-./start_web.sh
+ENABLE_SKELETON = True
+ENABLE_HEATMAP = True
 ```
 
 ---
 
-## 📊 Directory Structure
+## 📊 System Requirements
 
-```
-riftech-cam-security/
-│
-├── 📄 README.md                      # Main documentation
-├── 📄 WEB_INTERFACE_README.md        # Web interface docs
-├── 📄 requirements.txt              # Python dependencies
-│
-├── 🐍 main.py                      # GUI application
-├── 🐍 gui.py                       # PyQt6 GUI
-├── 🐍 web_server.py                # WebSocket server
-├── 🐍 config.py                    # Configuration
-├── 🐍 detectors.py                 # Detection modules
-├── 🐍 database.py                  # Database manager
-├── 🐍 telegram_bot.py              # Telegram integration
-├── 🐍 audio.py                     # Audio system
-├── 🐍 utils.py                     # Utilities
-│
-├── 🌐 web.html                     # Web interface
-├── 🚀 start_web.sh                # Start script
-├── ⚙️  security-system-web.service # Systemd service
-│
-├── 📁 recordings/                  # Saved videos
-├── 📁 snapshots/                   # Screenshots
-├── 📁 alerts/                      # Alert photos
-├── 📁 trusted_faces/               # Trusted person photos
-├── 📁 logs/                        # System logs
-│
-├── 📁 audio/                       # Audio files
-│   └── alarm.wav
-│
-├── 📁 readme_assets/               # Documentation assets
-│   ├── diagram-flow.svg
-│   ├── header-components.svg
-│   └── ...
-│
-└── 🐁 venv/                       # Virtual environment
-```
+### Minimum Requirements
+- **OS**: Ubuntu 20.04+, Debian 11+
+- **CPU**: Dual-core 2.0 GHz
+- **RAM**: 2 GB (4 GB recommended)
+- **Storage**: 500 MB for application, 5 GB+ for recordings
+- **Camera**: V380 dual-lens or IP camera with RTSP
+- **Python**: 3.8 or higher
+- **FFmpeg**: Required for video processing
+
+### Recommended Requirements
+- **CPU**: Quad-core 3.0 GHz+
+- **RAM**: 8 GB+
+- **Storage**: 20 GB+ SSD
+- **Network**: 100 Mbps+ for streaming
 
 ---
 
-## 🔒 Security Best Practices
+## 🔍 Troubleshooting
 
-### Production Deployment
-
-1. **Use HTTPS with Nginx**
-```nginx
-server {
-    listen 443 ssl;
-    server_name your-domain.com;
-
-    ssl_certificate /path/to/cert.pem;
-    ssl_certificate_key /path/to/key.pem;
-
-    location / {
-        proxy_pass http://localhost:8080;
-        proxy_http_version 1.1;
-        proxy_set_header Upgrade $http_upgrade;
-        proxy_set_header Connection "upgrade";
-    }
-
-    location /ws/ {
-        proxy_pass http://localhost:8765;
-        proxy_http_version 1.1;
-        proxy_set_header Upgrade $http_upgrade;
-        proxy_set_header Connection "upgrade";
-    }
-}
-```
-
-2. **Add Authentication**
-```bash
-# Install htpasswd
-sudo apt install apache2-utils
-
-# Create password file
-sudo htpasswd -c /etc/nginx/.htpasswd admin
-
-# Update Nginx config
-auth_basic "Restricted";
-auth_basic_user_file /etc/nginx/.htpasswd;
-```
-
-3. **Firewall Rules**
-```bash
-# Only allow specific IPs
-sudo ufw allow from 192.168.1.0/24 to any port 8080
-sudo ufw allow from 192.168.1.0/24 to any port 8765
-
-# Block everything else
-sudo ufw deny 8080
-sudo ufw deny 8765
-```
-
-4. **Regular Updates**
-```bash
-# Update system
-sudo apt update && sudo apt upgrade -y
-
-# Update Python packages
-cd ~/riftech-cam-security
-git pull
-source venv/bin/activate
-pip install -r requirements.txt --upgrade
-```
-
----
-
-## 🐛 Troubleshooting
-
-### Camera Not Detected
+### Camera Not Connecting
 
 ```bash
-# Check available cameras
-ls -l /dev/video*
+# Test RTSP connection manually
+ffplay rtsp://admin:password@CAMERA_IP:554/h264/ch1/main/av_stream
 
-# Test camera
-ffplay /dev/video0
+# Check network connectivity
+ping CAMERA_IP
 
-# Add user to video group
-sudo usermod -a -G video $USER
-
-# Re-login
-newgrp video
+# Check firewall
+sudo ufw status
+sudo ufw allow 8765/tcp
+sudo ufw allow 8080/tcp
 ```
 
 ### High CPU Usage
 
-```bash
-# Check CPU usage
-htop
-
-# Solution 1: Use Nano model
-# Solution 2: Increase confidence to 30-40%
-# Solution 3: Disable skeleton/heatmap
-# Solution 4: Reduce FPS to 15-20
-```
-
-### Out of Memory
-
-```bash
-# Check memory
-free -h
-
-# Add swap space
-sudo fallocate -l 4G /swapfile
-sudo chmod 600 /swapfile
-sudo mkswap /swapfile
-sudo swapon /swapfile
-
-# Make permanent
-echo '/swapfile none swap sw 0 0' | sudo tee -a /etc/fstab
-```
+**Solutions:**
+1. Use Nano model instead of Small/Medium
+2. Increase confidence to 30-40%
+3. Disable skeleton and heatmap
+4. Reduce FPS in config
 
 ### WebSocket Connection Failed
 
@@ -738,147 +394,61 @@ echo '/swapfile none swap sw 0 0' | sudo tee -a /etc/fstab
 # Check if port is listening
 netstat -tlnp | grep 8765
 
-# Check firewall
-sudo ufw status
-
-# Allow port
-sudo ufw allow 8765/tcp
-
 # Check server logs
-journalctl -u security-system-web -n 50
+tail -f logs/websocket.log
+
+# Restart services
+sudo systemctl restart security-system-v380
 ```
 
-### Detection Not Working
+### V380 Detection Issues
+
+**Problem**: AI detects objects incorrectly on split frames
+
+**Solution**: 
+1. Ensure `V380_MODE = True` in config.py
+2. Check RTSP URL is correct
+3. Verify camera is V380 dual-lens
+4. Restart servers
+
+### Services Not Starting on Boot
 
 ```bash
-# Check if models downloaded
-ls ~/.cache/ultralytics/
+# Check if enabled
+sudo systemctl is-enabled security-system-v380
+sudo systemctl is-enabled http-server
 
-# Manually download models
-python -c "from ultralytics import YOLO; YOLO('yolov8n.pt')"
+# Enable if disabled
+sudo systemctl enable security-system-v380
+sudo systemctl enable http-server
 
-# Check detection modules
-python -c "from detectors import PersonDetector; print('OK')"
-
-# Test detection
-python -c "
-from detectors import PersonDetector
-from config import Config
-config = Config()
-detector = PersonDetector(config)
-print('Detector initialized successfully')
-"
+# Check network dependency
+sudo systemctl status network-online.target
 ```
 
 ---
 
-## 📈 Performance Benchmarks
-
-| System | RAM | CPU | FPS | Model | Features |
-|---------|------|------|------|--------|-----------|
-| **Raspberry Pi 4** | 4GB | ARM Cortex-A72 | 15-20 | Nano | Minimal |
-| **Desktop Intel i5** | 8GB | 4-core | 30+ | Small | Full |
-| **Desktop Intel i7** | 16GB | 8-core | 30+ | Medium | Full |
-| **Server AMD Ryzen** | 32GB | 16-core | 30+ | Medium + GPU | Full |
-
----
-
-## 🎯 Use Cases
-
-### 🏠 Home Security
-- Monitor entrances and common areas
-- Receive alerts on phone via Telegram
-- Review recordings of any events
-- Set up trusted family members
-
-### 🏢 Office Security
-- Multiple camera support
-- Employee face recognition
-- After-hours monitoring
-- Evidence recording
-
-### 🏭 Warehouse Security
-- Large zone coverage
-- Motion tracking in aisles
-- Night vision capability
-- Heat map for activity analysis
-
-### 🏪 Retail Security
-- Shoplifting detection
-- Customer counting
-- Staff monitoring
-- Evidence collection
-
----
-
-## 🔮 Roadmap
-
-### Phase 1 (Current) ✅
-- [x] Basic video streaming
-- [x] AI detection (person, motion, face)
-- [x] Web interface
-- [x] Zone management
-- [x] Telegram integration
-
-### Phase 2 (Coming Soon) 🚧
-- [ ] Multi-camera support
-- [ ] Playback recordings from web
-- [ ] Mobile app (React Native)
-- [ ] Cloud storage backup
-- [ ] Scheduled arming/disarming
-- [ ] Export events to CSV
-
-### Phase 3 (Future) 🔮
-- [ ] Video analytics dashboard
-- [ ] People counting & dwell time
-- [ ] Heat map timeline
-- [ ] Integration with alarm systems
-- [ ] REST API for third-party integrations
-- [ ] License plate recognition
-
----
-
-## 🤝 Contributing
-
-Contributions are welcome! Please follow these steps:
-
-1. **Fork the repository**
-   ```bash
-   git clone https://github.com/riftech22/riftech-cam-security.git
-   ```
-
-2. **Create a feature branch**
-   ```bash
-   git checkout -b feature/your-feature-name
-   ```
-
-3. **Make your changes**
-   - Write clean code
-   - Add comments
-   - Test thoroughly
-
-4. **Commit your changes**
-   ```bash
-   git add .
-   git commit -m "Add your feature"
-   ```
-
-5. **Push to branch**
-   ```bash
-   git push origin feature/your-feature-name
-   ```
-
-6. **Submit Pull Request**
-   - Describe your changes
-   - Reference any issues
-   - Include screenshots if applicable
-
----
-
-## 📞 Support
+## 📞 Support & Documentation
 
 - **GitHub Issues**: https://github.com/riftech22/riftech-cam-security/issues
-- **Documentation**: See `WEB_INTERFACE_README.md` for detailed web interface guide
+- **Systemd Services Guide**: See `SERVICES_README.md`
+- **Web Interface Guide**: See `WEB_INTERFACE_README.md`
+
+---
+
+## 🔄 Updates
+
+```bash
+# Pull latest changes
+git pull origin main
+
+# Update dependencies
+source venv/bin/activate
+pip install -r requirements.txt --upgrade
+
+# Restart services
+sudo systemctl restart security-system-v380 http-server
+```
 
 ---
 
@@ -886,27 +456,8 @@ Contributions are welcome! Please follow these steps:
 
 - **YOLOv8 Documentation**: https://docs.ultralytics.com/
 - **OpenCV Documentation**: https://docs.opencv.org/
+- **FFmpeg Documentation**: https://ffmpeg.org/documentation.html
 - **MediaPipe**: https://mediapipe.dev/
-- **PyTorch**: https://pytorch.org/
-
----
-
-## 📊 System Requirements
-
-### Minimum Requirements
-- **OS**: Ubuntu 20.04+, Debian 11+, Windows 10+, macOS 11+
-- **CPU**: Dual-core 2.0 GHz
-- **RAM**: 2 GB (4 GB recommended)
-- **Storage**: 500 MB for application, 5 GB+ for recordings
-- **Camera**: USB webcam or IP camera
-- **Python**: 3.8 or higher
-
-### Recommended Requirements
-- **CPU**: Quad-core 3.0 GHz+
-- **RAM**: 8 GB+
-- **GPU**: NVIDIA GPU with CUDA support (optional)
-- **Storage**: 20 GB+ SSD
-- **Network**: 100 Mbps+ for streaming
 
 ---
 
@@ -915,8 +466,7 @@ Contributions are welcome! Please follow these steps:
 - **YOLOv8** by Ultralytics
 - **OpenCV** by OpenCV Team
 - **MediaPipe** by Google
-- **PyQt6** by Riverbank Computing
-- **face_recognition** by Adam Geitgey
+- **FFmpeg** by FFmpeg Team
 
 ---
 
@@ -935,11 +485,12 @@ This project is open source and available under the MIT License.
 ```bash
 git clone https://github.com/riftech22/riftech-cam-security.git
 cd riftech-cam-security
-./start_web.sh
+python3 -m venv venv
+source venv/bin/activate
+pip install -r requirements.txt
+./start_both_servers.sh
 ```
 
 **Made with ❤️ by Riftech**
-
-[⬆ Back to Top](#--quick-start)
 
 </div>

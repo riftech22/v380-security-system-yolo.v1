@@ -47,6 +47,10 @@ desktop.ini
 
 # Logs
 *.log
+logs/*.log
+http_server.log
+web_server.log
+websocket.log
 
 # Test files
 test_*.py
@@ -60,3 +64,17 @@ test_*.py
 # Compiled files
 *.pyc
 *.pyo
+
+# Database
+*.db
+*.sqlite
+*.sqlite3
+
+# Runtime data
+recordings/*.avi
+recordings/*.mp4
+recordings/*.mkv
+snapshots/*.jpg
+snapshots/*.png
+alerts/*.jpg
+alerts/*.png
