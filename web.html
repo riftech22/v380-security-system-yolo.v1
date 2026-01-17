@@ -1027,7 +1027,9 @@
         <!-- Video Section -->
         <div class="video-section">
             <img id="video-feed" alt="Security Camera Feed" />
-            <canvas id="video-canvas"></canvas>
+            <canvas id="zone-canvas-top" style="z-index: 20;"></canvas>
+            <canvas id="zone-canvas-bottom" style="z-index: 20;"></canvas>
+            <canvas id="overlay-canvas" style="z-index: 30; pointer-events: none;"></canvas>
         </div>
         
         <!-- Status Display (OUTSIDE live preview) -->
@@ -1225,6 +1227,12 @@
         let videoNaturalWidth = 1280;
         let videoNaturalHeight = 720;
         
+        // Split camera detection
+        let isSplitFrame = false;
+        let splitY = 0;
+        let topCanvasHeight = 0;
+        let bottomCanvasHeight = 0;
+        
         // Load saved state from localStorage
         function loadSavedState() {
             try {
@@ -1257,12 +1265,18 @@
         });
         
         function setupCanvas() {
-            const canvas = document.getElementById('video-canvas');
+            const zoneCanvasTop = document.getElementById('zone-canvas-top');
+            const zoneCanvasBottom = document.getElementById('zone-canvas-bottom');
+            const overlayCanvas = document.getElementById('overlay-canvas');
             const video = document.getElementById('video-feed');
             
-            // Set initial canvas size
-            canvas.width = canvasWidth;
-            canvas.height = canvasHeight;
+            // Set initial canvas sizes
+            zoneCanvasTop.width = canvasWidth;
+            zoneCanvasTop.height = canvasHeight;
+            zoneCanvasBottom.width = canvasWidth;
+            zoneCanvasBottom.height = canvasHeight;
+            overlayCanvas.width = canvasWidth;
+            overlayCanvas.height = canvasHeight;
             
             // Update canvas size when video loads
             video.onload = () => {
@@ -1271,16 +1285,59 @@
                     videoNaturalHeight = video.naturalHeight;
                     canvasWidth = video.naturalWidth;
                     canvasHeight = video.naturalHeight;
-                    canvas.width = canvasWidth;
-                    canvas.height = canvasHeight;
+                    
+                    // Detect split frame (V380 vertical stack)
+                    isSplitFrame = (video.naturalWidth < video.naturalHeight * 0.9);
+                    splitY = Math.round(video.naturalHeight / 2);
+                    topCanvasHeight = splitY;
+                    bottomCanvasHeight = video.naturalHeight - splitY;
+                    
+                    if (isSplitFrame) {
+                        // Top canvas: full width, half height
+                        zoneCanvasTop.width = video.naturalWidth;
+                        zoneCanvasTop.height = topCanvasHeight;
+                        
+                        // Bottom canvas: full width, half height, shifted
+                        zoneCanvasBottom.width = video.naturalWidth;
+                        zoneCanvasBottom.height = bottomCanvasHeight;
+                        
+                        console.log(`[Canvas] Split frame detected: ${video.naturalWidth}x${video.naturalHeight}`);
+                        console.log(`[Canvas] Top canvas: ${zoneCanvasTop.width}x${zoneCanvasTop.height}`);
+                        console.log(`[Canvas] Bottom canvas: ${zoneCanvasBottom.width}x${zoneCanvasBottom.height}`);
+                        addLog(`Split frame detected: Top ${zoneCanvasTop.width}x${zoneCanvasTop.height}, Bottom ${zoneCanvasBottom.width}x${zoneCanvasBottom.height}`, 'info');
+                    } else {
+                        // Single camera: full canvas
+                        zoneCanvasTop.width = video.naturalWidth;
+                        zoneCanvasTop.height = video.naturalHeight;
+                        zoneCanvasBottom.width = video.naturalWidth;
+                        zoneCanvasBottom.height = video.naturalHeight;
+                        
+                        console.log(`[Canvas] Single camera: ${video.naturalWidth}x${video.naturalHeight}`);
+                        addLog(`Single camera detected: ${video.naturalWidth}x${video.naturalHeight}`, 'info');
+                    }
+                    
+                    canvasWidth = video.naturalWidth;
+                    canvasHeight = video.naturalHeight;
+                    
+                    // Overlay canvas always full size
+                    overlayCanvas.width = video.naturalWidth;
+                    overlayCanvas.height = video.naturalHeight;
+                    
                     console.log(`[Canvas] Video loaded: ${video.naturalWidth}x${video.naturalHeight}`);
                     addLog(`Canvas resized to ${canvasWidth}x${canvasHeight}`, 'info');
                 }
             };
             
-            canvas.addEventListener('click', (e) => {
+            // Add click event to zone canvases (only top canvas clickable)
+            zoneCanvasTop.addEventListener('click', (e) => {
                 if (isDrawing) {
-                    addZonePoint(e);
+                    addZonePoint(e, 'top');
+                }
+            });
+            
+            zoneCanvasBottom.addEventListener('click', (e) => {
+                if (isDrawing) {
+                    addZonePoint(e, 'bottom');
                 }
             });
         }
@@ -1356,20 +1413,33 @@
         }
         
         function drawAllZones() {
-            const canvas = document.getElementById('video-canvas');
-            const ctx = canvas.getContext('2d');
+            const zoneCanvasTop = document.getElementById('zone-canvas-top');
+            const zoneCanvasBottom = document.getElementById('zone-canvas-bottom');
+            const ctxTop = zoneCanvasTop.getContext('2d');
+            const ctxBottom = zoneCanvasBottom.getContext('2d');
             
-            // Clear canvas
-            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            // Clear both canvases
+            ctxTop.clearRect(0, 0, zoneCanvasTop.width, zoneCanvasTop.height);
+            ctxBottom.clearRect(0, 0, zoneCanvasBottom.width, zoneCanvasBottom.height);
             
             // Draw all server zones
             serverZones.forEach((zone, zoneIndex) => {
                 if (zone.points && zone.points.length >= 3) {
+                    // Determine which canvas to draw on based on zone points
+                    const zoneCenterY = zone.points.reduce((sum, p) => sum + p.y, 0) / zone.points.length;
+                    const isTopZone = isSplitFrame && zoneCenterY < splitY;
+                    
+                    const canvas = isTopZone ? zoneCanvasTop : zoneCanvasBottom;
+                    const ctx = isTopZone ? ctxTop : ctxBottom;
+                    
+                    // Apply offset for bottom split
+                    const offsetY = isSplitFrame && !isTopZone ? -splitY : 0;
+                    
                     ctx.beginPath();
-                    ctx.moveTo(zone.points[0].x, zone.points[0].y);
+                    ctx.moveTo(zone.points[0].x, zone.points[0].y + offsetY);
                     
                     for (let i = 1; i < zone.points.length; i++) {
-                        ctx.lineTo(zone.points[i].x, zone.points[i].y);
+                        ctx.lineTo(zone.points[i].x, zone.points[i].y + offsetY);
                     }
                     
                     ctx.closePath();
@@ -1377,21 +1447,22 @@
                     // Zone style based on breach status
                     const isBreach = zone.breach_active || false;
                     if (isBreach) {
-                        ctx.fillStyle = 'rgba(255, 0, 0, 0.2)';
+                        ctx.fillStyle = 'rgba(255, 0, 0, 0.3)';
                         ctx.strokeStyle = '#ff0000';
+                        ctx.lineWidth = 4;
                     } else {
-                        ctx.fillStyle = 'rgba(0, 255, 255, 0.1)';
+                        ctx.fillStyle = 'rgba(0, 255, 255, 0.15)';
                         ctx.strokeStyle = '#00ffff';
+                        ctx.lineWidth = 3;
                     }
                     
-                    ctx.lineWidth = 3;
                     ctx.fill();
                     ctx.stroke();
                     
                     // Draw zone points
                     zone.points.forEach(point => {
                         ctx.beginPath();
-                        ctx.arc(point.x, point.y, 8, 0, 2 * Math.PI);
+                        ctx.arc(point.x, point.y + offsetY, 10, 0, 2 * Math.PI);
                         ctx.fillStyle = isBreach ? '#ff0000' : '#00ffff';
                         ctx.fill();
                         ctx.strokeStyle = '#ffffff';
@@ -1402,68 +1473,108 @@
                     // Draw breach text if active
                     if (isBreach) {
                         const centerX = zone.points.reduce((sum, p) => sum + p.x, 0) / zone.points.length;
-                        const centerY = zone.points.reduce((sum, p) => sum + p.y, 0) / zone.points.length;
+                        const centerY = zone.points.reduce((sum, p) => sum + p.y, 0) / zone.points.length + offsetY;
                         
-                        ctx.font = 'bold 24px Courier New';
+                        ctx.font = 'bold 28px Courier New';
                         ctx.fillStyle = '#ff0000';
                         ctx.textAlign = 'center';
                         ctx.fillText('!! BREACH !!', centerX, centerY);
                     }
+                    
+                    console.log(`[Zone] Drew zone ${zoneIndex} on ${isTopZone ? 'TOP' : 'BOTTOM'} canvas, breach: ${isBreach}`);
                 }
             });
             
             // Draw current drawing zone (if any)
             if (zonePoints.length > 0) {
-                ctx.beginPath();
-                ctx.moveTo(zonePoints[0].x, zonePoints[0].y);
+                // Draw on top canvas
+                ctxTop.beginPath();
+                ctxTop.moveTo(zonePoints[0].x, zonePoints[0].y);
                 
                 for (let i = 1; i < zonePoints.length; i++) {
-                    ctx.lineTo(zonePoints[i].x, zonePoints[i].y);
+                    ctxTop.lineTo(zonePoints[i].x, zonePoints[i].y);
                 }
                 
                 if (zonePoints.length >= 3) {
-                    ctx.closePath();
-                    ctx.fillStyle = 'rgba(255, 255, 0, 0.1)';
-                    ctx.fill();
+                    ctxTop.closePath();
+                    ctxTop.fillStyle = 'rgba(255, 255, 0, 0.15)';
+                    ctxTop.fill();
                 }
                 
-                ctx.strokeStyle = '#ffff00';
-                ctx.lineWidth = 3;
-                ctx.stroke();
+                ctxTop.strokeStyle = '#ffff00';
+                ctxTop.lineWidth = 3;
+                ctxTop.stroke();
                 
                 // Draw points
                 zonePoints.forEach(point => {
-                    ctx.beginPath();
-                    ctx.arc(point.x, point.y, 8, 0, 2 * Math.PI);
-                    ctx.fillStyle = '#ffff00';
-                    ctx.fill();
-                    ctx.strokeStyle = '#ffffff';
-                    ctx.lineWidth = 2;
-                    ctx.stroke();
+                    ctxTop.beginPath();
+                    ctxTop.arc(point.x, point.y, 10, 0, 2 * Math.PI);
+                    ctxTop.fillStyle = '#ffff00';
+                    ctxTop.fill();
+                    ctxTop.strokeStyle = '#ffffff';
+                    ctxTop.lineWidth = 2;
+                    ctxTop.stroke();
                 });
+                
+                console.log(`[Zone] Drawing ${zonePoints.length} points on top canvas`);
             }
         }
         
         function updateVideoFeed(data) {
             const img = document.getElementById('video-feed');
-            const canvas = document.getElementById('video-canvas');
+            const zoneCanvasTop = document.getElementById('zone-canvas-top');
+            const zoneCanvasBottom = document.getElementById('zone-canvas-bottom');
+            const overlayCanvas = document.getElementById('overlay-canvas');
             
             // Load image first to get dimensions
             const tempImg = new Image();
             tempImg.onload = () => {
-                // Update canvas size to match video frame
+                // Update canvas sizes to match video frame
                 if (tempImg.width !== canvasWidth || tempImg.height !== canvasHeight) {
                     videoNaturalWidth = tempImg.width;
                     videoNaturalHeight = tempImg.height;
                     canvasWidth = tempImg.width;
                     canvasHeight = tempImg.height;
-                    canvas.width = canvasWidth;
-                    canvas.height = canvasHeight;
-                    console.log(`[Canvas] Frame size updated: ${canvasWidth}x${canvasHeight}`);
-                    addLog(`Frame detected: ${canvasWidth}x${canvasHeight}`, 'info');
+                    
+                    // Detect split frame (V380 vertical stack)
+                    isSplitFrame = (tempImg.width < tempImg.height * 0.9);
+                    splitY = Math.round(tempImg.height / 2);
+                    topCanvasHeight = splitY;
+                    bottomCanvasHeight = tempImg.height - splitY;
+                    
+                    if (isSplitFrame) {
+                        // Top canvas: full width, half height
+                        zoneCanvasTop.width = tempImg.width;
+                        zoneCanvasTop.height = topCanvasHeight;
+                        
+                        // Bottom canvas: full width, half height
+                        zoneCanvasBottom.width = tempImg.width;
+                        zoneCanvasBottom.height = bottomCanvasHeight;
+                        
+                        console.log(`[Canvas] Split frame: ${tempImg.width}x${tempImg.height}`);
+                        console.log(`[Canvas] Top: ${zoneCanvasTop.width}x${zoneCanvasTop.height}`);
+                        console.log(`[Canvas] Bottom: ${zoneCanvasBottom.width}x${zoneCanvasBottom.height}`);
+                        addLog(`Split frame: Top ${zoneCanvasTop.width}x${zoneCanvasTop.height}, Bottom ${zoneCanvasBottom.width}x${zoneCanvasBottom.height}`, 'info');
+                    } else {
+                        // Single camera
+                        zoneCanvasTop.width = tempImg.width;
+                        zoneCanvasTop.height = tempImg.height;
+                        zoneCanvasBottom.width = tempImg.width;
+                        zoneCanvasBottom.height = tempImg.height;
+                        
+                        console.log(`[Canvas] Single camera: ${tempImg.width}x${tempImg.height}`);
+                        addLog(`Single camera: ${tempImg.width}x${tempImg.height}`, 'info');
+                    }
+                    
+                    canvasWidth = tempImg.width;
+                    canvasHeight = tempImg.height;
+                    
+                    // Overlay canvas always full size
+                    overlayCanvas.width = tempImg.width;
+                    overlayCanvas.height = tempImg.height;
                 }
             };
-            tempImg.src = `data:image:image/jpeg;base64,${data}`;
+            tempImg.src = `data:image/jpeg;base64,${data}`;
             
             // Data URL - no cache needed for data URLs
             img.src = `data:image/jpeg;base64,${data}`;
@@ -1775,27 +1886,31 @@
             }
         }
         
-        function addZonePoint(event) {
-            const canvas = document.getElementById('video-canvas');
-            const rect = canvas.getBoundingClientRect();
+        function addZonePoint(event, split = 'top') {
+            const rect = event.target.getBoundingClientRect();
             
             // Scale based on actual canvas dimensions
             const scaleX = canvasWidth / rect.width;
             const scaleY = canvasHeight / rect.height;
             
             const x = Math.round((event.clientX - rect.left) * scaleX);
-            const y = Math.round((event.clientY - rect.top) * scaleY);
+            let y = Math.round((event.clientY - rect.top) * scaleY);
             
-            console.log(`[Zone] Click position: canvas=${canvasWidth}x${canvasHeight}, display=${rect.width.toFixed(0)}x${rect.height.toFixed(0)}, scale=${scaleX.toFixed(2)}x${scaleY.toFixed(2)}, point=(${x}, ${y})`);
+            // Adjust Y for bottom split
+            if (isSplitFrame && split === 'bottom') {
+                y = y - splitY;
+            }
+            
+            console.log(`[Zone] Click position: split=${split}, canvas=${canvasWidth}x${canvasHeight}, display=${rect.width.toFixed(0)}x${rect.height.toFixed(0)}, scale=${scaleX.toFixed(2)}x${scaleY.toFixed(2)}, point=(${x}, ${y})`);
             
             sendCommand('add_zone_point', { x, y });
-            console.log('[Zone] Sent zone point command to server');
+            console.log(`[Zone] Sent zone point command to server (${split} split)`);
             zonePoints.push({ x, y });
             
             // Redraw all zones including current drawing
             drawAllZones();
             
-            addLog(`Zone point added: (${x}, ${y})`, 'info');
+            addLog(`Zone point added (${split} split): (${x}, ${y})`, 'info');
         }
         
         function clearZones() {
@@ -1803,11 +1918,17 @@
                 sendCommand('clear_zones');
                 addLog('All zones cleared', 'warning');
                 
-                // Clear canvas
-                const canvas = document.getElementById('video-canvas');
-                const ctx = canvas.getContext('2d');
-                ctx.clearRect(0, 0, canvas.width, canvas.height);
+                // Clear both canvases
+                const zoneCanvasTop = document.getElementById('zone-canvas-top');
+                const zoneCanvasBottom = document.getElementById('zone-canvas-bottom');
+                const ctxTop = zoneCanvasTop.getContext('2d');
+                const ctxBottom = zoneCanvasBottom.getContext('2d');
+                
+                ctxTop.clearRect(0, 0, zoneCanvasTop.width, zoneCanvasTop.height);
+                ctxBottom.clearRect(0, 0, zoneCanvasBottom.width, zoneCanvasBottom.height);
+                
                 zonePoints = [];
+                drawAllZones();
             }
         }
         
