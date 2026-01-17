@@ -1287,7 +1287,8 @@
         
         function updateVideoFeed(data) {
             const img = document.getElementById('video-feed');
-            img.src = `data:image/jpeg;base64,${data}`;
+            // Add timestamp to prevent browser caching
+            img.src = `data:image/jpeg;base64,${data}&t=${Date.now()}`;
         }
         
         function updateConnectionUI() {
