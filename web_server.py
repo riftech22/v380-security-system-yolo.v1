@@ -209,54 +209,44 @@ class ProcessingThread:
         logging.info("[Processing] Thread started")
     
     def _process_loop(self):
-        """Processing loop - runs continuously with frame skipping."""
+        """Processing loop - ULTRA-SIMPLIFIED: Just forward detection frames."""
         while self.running:
             try:
-                # ALWAYS try to get frame from detection thread FIRST
-                # If detection frame exists, use it (has YOLO bounding boxes)
-                # If no detection frame, fall back to raw frame
-                detection_frame_used = False
-                
+                # Simply check if detection thread has a frame, and use it
+                # No complex fallback logic that could cause issues
                 if self.system.detection_thread:
                     results = self.system.detection_thread.get_results()
                     if results and results.get('frame') is not None:
-                        processed_frame = results.get('frame')
-                        if processed_frame is not None and processed_frame.size > 0:
+                        frame = results.get('frame')
+                        
+                        # Validate frame is valid
+                        if frame is not None and frame.size > 0 and len(frame.shape) == 3:
+                            # Just forward the detection frame AS-IS
+                            # It already has YOLO bounding boxes, skeleton, etc.
                             with self.lock:
-                                self.processed_frame = processed_frame.copy()
-                            detection_frame_used = True
-                            # Log every 30 frames
+                                self.processed_frame = frame.copy()
+                            
+                            # Log occasionally
                             if hasattr(self, '_frame_count'):
                                 self._frame_count += 1
                             else:
                                 self._frame_count = 1
                             if self._frame_count % 30 == 0:
                                 persons = results.get('persons', [])
-                                logging.info(f"[Processing] Using detection frame: {len(persons)} persons (frame #{self._frame_count})")
+                                logging.info(f"[Processing] Forwarding detection frame with {len(persons)} persons (frame #{self._frame_count})")
                 
-                # If no detection frame available, process raw frame
-                # This happens during startup or when detection is slow
-                if not detection_frame_used:
-                    frame = self.system.capture_thread.get_frame()
-                    
-                    if frame is not None:
-                        # Frame skipping to reduce CPU load (process every 3rd frame)
-                        self.frame_skip = (self.frame_skip + 1) % 3
-                        
-                        if self.frame_skip == 0:
-                            # Submit frame to detection thread only on non-skipped frames
-                            if self.system.detection_thread:
-                                self.system.detection_thread.submit(frame)
-                        
-                        # Process raw frame with basic overlays
-                        processed = self.system._process_frame_internal(frame)
-                        
-                        if processed is not None and processed.size > 0:
-                            with self.lock:
-                                self.processed_frame = processed
+                # Only if NO detection frame, try to get one from raw capture
+                # But DON'T process it here - just store it as-is
+                else:
+                    raw_frame = self.system.capture_thread.get_frame()
+                    if raw_frame is not None and raw_frame.size > 0:
+                        # Just store the raw frame, don't do any processing
+                        # _process_frame_internal will handle everything
+                        with self.lock:
+                            self.processed_frame = raw_frame.copy()
                 
                 # Small sleep to prevent CPU overload
-                time.sleep(0.005)
+                time.sleep(0.01)
             
             except Exception as e:
                 logging.error(f"[Processing] Error: {e}")
